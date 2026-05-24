@@ -1,0 +1,29 @@
+[schedule]
+timezone = "Europe/Warsaw"
+
+[crypto.general]
+subreddits = ["CryptoCurrency", "CryptoMarkets", "ethfinance"]
+polymarket_tags = ["crypto"]
+top_n = 15
+schedule = "0 8 * * *"
+
+[crypto.watchlist]
+symbols = ["SOL", "SUI", "AVAX"]
+per_symbol_top_n = 5
+schedule = "0 8 * * *"
+
+[scoring]
+dedup_window_days = 7
+min_score = 0.0
+per_author_cap = 3
+
+[synth]
+model = "gpt-5.4-mini"
+max_input_items = 40
+max_output_tokens = 1200
+
+[telegram]
+parse_mode = "MarkdownV2"
+
+[storage]
+data_dir = "./data"
