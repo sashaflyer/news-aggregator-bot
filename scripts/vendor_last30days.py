@@ -43,6 +43,7 @@ MODULES = [
     "log.py",
     "query.py",
     "providers.py",
+    "snippet.py",
 ]
 
 # Modules vendored from paths OTHER than BASE_PATH.

@@ -26,6 +26,7 @@ To reproduce this exact vendor: `python scripts/vendor_last30days.py 1e03af19e0a
 - `log.py`
 - `query.py`
 - `providers.py`
+- `snippet.py`
 
 ## Vendored modules (from other paths)
 
