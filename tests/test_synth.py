@@ -84,3 +84,52 @@ def test_synthesize_truncates_to_max_input_items(cfg):
     prompt = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     payload = json.loads(prompt.split("```\n")[1].split("\n```")[0])
     assert len(payload) == cfg.synth.max_input_items
+
+
+def test_short_body_passes_through_unchanged(cfg):
+    from aggregator import synth
+
+    item = {"id": "r:1", "source": "reddit", "title": "t", "url": "u",
+            "text": "short body", "created_at": "2026-05-24T00:00:00+00:00",
+            "engagement_raw": {}, "metadata": {}}
+    out = synth._shorten_body(item, "crypto")
+    assert out is item or out["text"] == "short body"
+
+
+def test_long_body_gets_trimmed(cfg):
+    from aggregator import synth
+
+    long_body = "word " * 300  # 300 words >> 120
+    item = {"id": "r:1", "source": "reddit", "title": "Bitcoin hit ATH", "url": "u",
+            "text": long_body, "created_at": "2026-05-24T00:00:00+00:00",
+            "engagement_raw": {}, "metadata": {}}
+    out = synth._shorten_body(item, "crypto")
+    assert len(out["text"].split()) <= synth._MAX_BODY_WORDS + 1  # allow ellipsis token
+    assert out["id"] == "r:1"  # rest of fields preserved
+
+
+def test_synthesize_trims_long_items_in_prompt(cfg):
+    from unittest.mock import MagicMock, patch
+    from aggregator import synth
+
+    items = [
+        {"id": f"r:{i}", "source": "reddit", "title": f"t{i}", "url": "u",
+         "text": "word " * 400, "created_at": "2026-05-24T00:00:00+00:00",
+         "engagement_raw": {}, "metadata": {}}
+        for i in range(3)
+    ]
+
+    fake_resp = MagicMock()
+    fake_resp.choices = [MagicMock(message=MagicMock(content="ok"))]
+    fake_resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_resp
+
+    with patch.object(synth, "_get_client", return_value=fake_client):
+        synth.synthesize("crypto_general", items, cfg=cfg)
+
+    prompt = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    # Each item's text in the JSON payload should be short, not 400 words.
+    # Naive check: the prompt should not contain "word " repeated more than
+    # ~_MAX_BODY_WORDS times per item (3 items * 120 = 360 instances tops).
+    assert prompt.count("word") < 3 * synth._MAX_BODY_WORDS + 50

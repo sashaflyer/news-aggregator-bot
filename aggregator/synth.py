@@ -10,10 +10,46 @@ from openai import OpenAI
 
 from aggregator.config import Config
 from aggregator.prompts import load as load_prompt
+from aggregator.vendor.last30days import schema as _schema
+from aggregator.vendor.last30days import snippet as _snippet
 
 log = logging.getLogger(__name__)
 
 _client: OpenAI | None = None
+
+# Max words per item body before sending to the LLM. Anything longer is
+# trimmed to a query-relevant window via the upstream snippet extractor.
+_MAX_BODY_WORDS = 120
+
+
+def _shorten_body(item_dict: dict[str, Any], query: str) -> dict[str, Any]:
+    """Return a copy of `item_dict` with `text` replaced by a snippet if long.
+
+    Items whose body already fits under _MAX_BODY_WORDS are returned unchanged
+    (cheap no-op). Longer bodies are wrapped in a SourceItem just long enough
+    to call upstream `extract_best_snippet`, which returns a query-aligned window.
+    """
+    body = item_dict.get("text") or ""
+    if len(body.split()) <= _MAX_BODY_WORDS:
+        return item_dict
+    si = _schema.SourceItem(
+        item_id=str(item_dict.get("id", "")),
+        source=str(item_dict.get("source", "")),
+        title=str(item_dict.get("title", "")),
+        body=body,
+        url=str(item_dict.get("url", "")),
+    )
+    short = _snippet.extract_best_snippet(si, query, max_words=_MAX_BODY_WORDS)
+    out = dict(item_dict)
+    out["text"] = short
+    return out
+
+
+def _query_for_topic(topic_id: str, cfg: Config) -> str:
+    """Single string used by the snippet extractor to score window relevance."""
+    if topic_id == "crypto_watchlist":
+        return " ".join(cfg.crypto_watchlist.symbols)
+    return "crypto"
 
 
 def _get_client() -> OpenAI:
@@ -42,7 +78,9 @@ def _build_prompt(topic_id: str, items: list[dict[str, Any]], cfg: Config) -> st
 
 def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> str:
     capped = items[: cfg.synth.max_input_items]
-    prompt = _build_prompt(topic_id, capped, cfg)
+    query = _query_for_topic(topic_id, cfg)
+    shortened = [_shorten_body(it, query) for it in capped]
+    prompt = _build_prompt(topic_id, shortened, cfg)
     log.info("synth topic=%s items=%d prompt_chars=%d",
              topic_id, len(capped), len(prompt))
 
