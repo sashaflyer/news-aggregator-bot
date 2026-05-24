@@ -44,24 +44,22 @@ async def _fetch_all(queries: dict[str, Any]) -> dict[str, list[Item] | Exceptio
 
 
 def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> list[Item]:
-    try:
-        from aggregator.vendor.last30days import rerank, dedupe
-        deduped = dedupe.dedupe([i.to_dict() for i in items])
-        ranked = rerank.rerank(deduped, top_n=top_n, per_author_cap=per_author_cap)
-        by_id = {i.id: i for i in items}
-        return [by_id[r["id"]] for r in ranked if r["id"] in by_id]
-    except Exception:
-        log.exception("vendored scoring failed; falling back to engagement sort")
-        return sorted(
-            items,
-            key=lambda i: (
-                i.engagement_raw.get("upvotes", 0)
-                + i.engagement_raw.get("score", 0)
-                + 0.1 * i.engagement_raw.get("comments", 0)
-                + 0.001 * (i.engagement_raw.get("volume") or 0)
-            ),
-            reverse=True,
-        )[:top_n]
+    """V1 scoring: engagement-sum sort. Multi-factor scoring + per-author cap are
+    deferred to v2 once vendored upstream API is wrapped correctly.
+
+    Args:
+        per_author_cap: Currently unused; reserved for v2 when vendored rerank lands.
+    """
+    return sorted(
+        items,
+        key=lambda i: (
+            i.engagement_raw.get("upvotes", 0)
+            + i.engagement_raw.get("score", 0)
+            + 0.1 * i.engagement_raw.get("comments", 0)
+            + 0.001 * (i.engagement_raw.get("volume") or 0)
+        ),
+        reverse=True,
+    )[:top_n]
 
 
 async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,

@@ -66,4 +66,4 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         status = "ok" if fails == 0 else f"{fails} consecutive fails"
         lines.append(f"  {h['source']}: {status}  last success {last_ok}")
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")

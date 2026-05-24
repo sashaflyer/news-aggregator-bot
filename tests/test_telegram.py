@@ -35,7 +35,7 @@ async def test_short_message_sent_once(cfg):
         assert route.call_count == 1
         body = route.calls[0].request.read().decode()
         assert "hello world" in body
-        assert "MarkdownV2" in body
+        assert '"parse_mode":"Markdown"' in body
 
 
 @pytest.mark.asyncio

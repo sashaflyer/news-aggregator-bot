@@ -11,7 +11,7 @@ treat each upstream "tag" as a topic query and flatten to a list of dicts.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from aggregator.sources.base import Item, Source
@@ -24,9 +24,11 @@ def _fetch_by_tag(tag: str, limit: int = 50) -> list[dict[str, Any]]:
     Wraps ``search_polymarket`` using the tag as the topic query. Live behavior
     can be tuned later — tests mock this.
     """
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
+    from_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    to_date = now.strftime("%Y-%m-%d")
     response = _upstream.search_polymarket(
-        topic=tag, from_date=today, to_date=today, depth="default"
+        topic=tag, from_date=from_date, to_date=to_date, depth="default"
     )
     return (response.get("events") or [])[:limit]
 
