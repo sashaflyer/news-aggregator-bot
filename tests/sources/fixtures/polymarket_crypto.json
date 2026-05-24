@@ -1,0 +1,58 @@
+[
+  {
+    "id": "0xabc123",
+    "slug": "will-btc-reach-150k-by-end-of-2026",
+    "title": "Will BTC reach $150k by end of 2026?",
+    "description": "Market resolves YES if Bitcoin (BTC) trades at or above $150,000 USD on any major exchange before 2026-12-31 23:59 UTC.",
+    "url": "https://polymarket.com/event/will-btc-reach-150k-by-end-of-2026",
+    "endDate": "2026-12-31T23:59:59Z",
+    "end_date": "2026-12-31",
+    "volume": 4521000.0,
+    "liquidity": 312000.0,
+    "outcomes": ["Yes", "No"],
+    "outcome_prices": [0.34, 0.66],
+    "tags": [{"label": "Crypto"}, {"label": "Bitcoin"}]
+  },
+  {
+    "id": "0xdef456",
+    "slug": "ethereum-eth-flippening-2026",
+    "title": "Will ETH market cap exceed BTC market cap in 2026?",
+    "description": "The flippening question: will Ethereum overtake Bitcoin by total market capitalization at any point during 2026?",
+    "url": "https://polymarket.com/event/ethereum-eth-flippening-2026",
+    "endDate": "2026-12-31T23:59:59Z",
+    "end_date": "2026-12-31",
+    "volume": 891000.0,
+    "liquidity": 142000.0,
+    "outcomes": ["Yes", "No"],
+    "outcome_prices": [0.08, 0.92],
+    "tags": [{"label": "Crypto"}, {"label": "Ethereum"}]
+  },
+  {
+    "id": "0xghi789",
+    "slug": "spot-solana-etf-approved-2026",
+    "title": "Will a spot Solana ETF be approved by the SEC in 2026?",
+    "description": "Resolves YES if the U.S. SEC approves at least one spot SOL ETF application before 2026-12-31.",
+    "url": "https://polymarket.com/event/spot-solana-etf-approved-2026",
+    "endDate": "2026-12-31T23:59:59Z",
+    "end_date": "2026-12-31",
+    "volume": 2103000.0,
+    "liquidity": 198000.0,
+    "outcomes": ["Yes", "No"],
+    "outcome_prices": [0.41, 0.59],
+    "tags": [{"label": "Crypto"}, {"label": "SOL"}, {"label": "ETF"}]
+  },
+  {
+    "id": "0xjkl012",
+    "slug": "fed-rate-cut-june-2026",
+    "title": "Will the Fed cut rates at the June 2026 FOMC meeting?",
+    "description": "Market resolves YES if the FOMC announces a rate cut of any size at the June 17-18, 2026 meeting.",
+    "url": "https://polymarket.com/event/fed-rate-cut-june-2026",
+    "endDate": "2026-06-18T20:00:00Z",
+    "end_date": "2026-06-18",
+    "volume": 1567000.0,
+    "liquidity": 224000.0,
+    "outcomes": ["Yes", "No"],
+    "outcome_prices": [0.62, 0.38],
+    "tags": [{"label": "Crypto"}, {"label": "Macro"}, {"label": "Fed"}]
+  }
+]
