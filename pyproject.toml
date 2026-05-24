@@ -1,0 +1,35 @@
+[project]
+name = "news-aggregator"
+version = "0.1.0"
+description = "Personal AI crypto research aggregator with Telegram delivery"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "python-telegram-bot>=21.0,<22",
+    "apscheduler>=3.10,<4",
+    "httpx>=0.27",
+    "openai>=1.40",
+    "python-dotenv>=1.0",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",     # httpx mocking
+]
+
+[project.scripts]
+news-aggregator = "aggregator.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["aggregator*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
