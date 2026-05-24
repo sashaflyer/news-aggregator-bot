@@ -1,0 +1,20 @@
+[Unit]
+Description=Personal AI Crypto Research Aggregator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=news-bot
+Group=news-bot
+WorkingDirectory=/opt/news-aggregator
+EnvironmentFile=/opt/news-aggregator/.env
+Environment=NEWS_AGGREGATOR_DATA_DIR=/var/lib/news-aggregator
+ExecStart=/opt/news-aggregator/.venv/bin/python -m aggregator
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

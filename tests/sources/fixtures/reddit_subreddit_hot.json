@@ -1,0 +1,62 @@
+[
+  {
+    "id": "R1",
+    "title": "SOL surges past $200 amid renewed institutional interest",
+    "url": "https://www.reddit.com/r/CryptoCurrency/comments/abc123/sol_surges/",
+    "score": 1432,
+    "num_comments": 287,
+    "subreddit": "CryptoCurrency",
+    "created_utc": 1748131200.0,
+    "author": "satoshi_jr",
+    "selftext": "Solana broke above $200 today on heavy volume. Analysts cite new ETF filings and DeFi growth.",
+    "date": "2026-05-24",
+    "engagement": {
+      "score": 1432,
+      "num_comments": 287,
+      "upvote_ratio": 0.94
+    },
+    "relevance": 0.812,
+    "why_relevant": "Reddit public search",
+    "metadata": {}
+  },
+  {
+    "id": "R2",
+    "title": "Discussion: Is the SUI ecosystem actually delivering on its promises?",
+    "url": "https://www.reddit.com/r/CryptoCurrency/comments/def456/sui_discussion/",
+    "score": 612,
+    "num_comments": 198,
+    "subreddit": "CryptoCurrency",
+    "created_utc": 1748044800.0,
+    "author": "chain_watcher",
+    "selftext": "Looking at TVL, dApp count, and transaction volume over the last quarter.",
+    "date": "2026-05-23",
+    "engagement": {
+      "score": 612,
+      "num_comments": 198,
+      "upvote_ratio": 0.88
+    },
+    "relevance": 0.534,
+    "why_relevant": "Reddit public search",
+    "metadata": {}
+  },
+  {
+    "id": "R3",
+    "title": "Daily General Discussion - May 22, 2026",
+    "url": "https://www.reddit.com/r/CryptoCurrency/comments/ghi789/daily_discussion/",
+    "score": 234,
+    "num_comments": 1102,
+    "subreddit": "CryptoCurrency",
+    "created_utc": 1747958400.0,
+    "author": "AutoModerator",
+    "selftext": "",
+    "date": "2026-05-22",
+    "engagement": {
+      "score": 234,
+      "num_comments": 1102,
+      "upvote_ratio": 0.79
+    },
+    "relevance": 0.612,
+    "why_relevant": "Reddit public search",
+    "metadata": {}
+  }
+]

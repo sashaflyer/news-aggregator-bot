@@ -1,0 +1,69 @@
+"""/status command handler."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from telegram import Update
+from telegram.ext import ContextTypes
+
+
+def _fmt_dt(iso: str | None) -> str:
+    if not iso:
+        return "never"
+    return iso.replace("T", " ").split("+")[0].split(".")[0] + " UTC"
+
+
+def _fmt_uptime(seconds: float) -> str:
+    s = int(seconds)
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m, _ = divmod(s, 60)
+    parts = []
+    if d: parts.append(f"{d}d")
+    if h or d: parts.append(f"{h}h")
+    parts.append(f"{m}m")
+    return " ".join(parts)
+
+
+async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    data = context.bot_data
+    authorized = data["authorized_chat_id"]
+    if update.effective_chat is None or update.effective_chat.id != authorized:
+        return
+
+    storage = data["storage"]
+    started_at: datetime = data["started_at"]
+    scheduler: Any = data.get("scheduler")
+
+    uptime = (datetime.now(timezone.utc) - started_at).total_seconds()
+    lines = ["*news-aggregator status*", "", f"Uptime: {_fmt_uptime(uptime)}", ""]
+
+    for topic in ("crypto_general", "crypto_watchlist"):
+        last = storage.last_run(topic)
+        if last:
+            lines.append(
+                f"Last digest ({topic}): {_fmt_dt(last['finished_at'])} "
+                f"{last['status']} ({last.get('items_delivered', 0)} items)"
+            )
+        else:
+            lines.append(f"Last digest ({topic}): never")
+
+    if scheduler is not None:
+        next_runs = []
+        for job in scheduler.get_jobs():
+            if job.next_run_time:
+                next_runs.append(job.next_run_time)
+        if next_runs:
+            nxt = min(next_runs).astimezone(timezone.utc).isoformat()
+            lines.append(f"Next scheduled run: {_fmt_dt(nxt)}")
+
+    lines.append("")
+    lines.append("Source health:")
+    for h in storage.all_source_health():
+        last_ok = _fmt_dt(h.get("last_success_at"))
+        fails = h.get("consecutive_failures", 0)
+        status = "ok" if fails == 0 else f"{fails} consecutive fails"
+        lines.append(f"  {h['source']}: {status}  last success {last_ok}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
