@@ -39,7 +39,7 @@ def test_synthesize_general_crypto_calls_openai(cfg, items):
     assert out == "DIGEST OUTPUT"
     call_kwargs = fake_client.chat.completions.create.call_args.kwargs
     assert call_kwargs["model"] == cfg.synth.model
-    assert call_kwargs["max_tokens"] == cfg.synth.max_output_tokens
+    assert call_kwargs["max_completion_tokens"] == cfg.synth.max_output_tokens
     prompt = call_kwargs["messages"][0]["content"]
     assert "SOL up 20%" in prompt
 

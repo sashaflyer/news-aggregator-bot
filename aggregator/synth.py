@@ -50,7 +50,7 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
     resp = client.chat.completions.create(
         model=cfg.synth.model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=cfg.synth.max_output_tokens,
+        max_completion_tokens=cfg.synth.max_output_tokens,
         temperature=0.3,
     )
     text = resp.choices[0].message.content or ""
