@@ -52,8 +52,20 @@ def _to_item(raw: dict[str, Any]) -> Item:
     """Map an upstream Polymarket event/market dict to our Item."""
     raw_id = str(raw.get("id") or raw.get("slug") or raw.get("url", ""))
     title = str(raw.get("title") or raw.get("question") or "").strip()
-    url = str(raw.get("url", ""))
     text = str(raw.get("description") or "")
+
+    # URL precedence:
+    # 1. explicit upstream url (rare in practice for Gamma events)
+    # 2. construct from slug: https://polymarket.com/event/<slug>
+    # 3. fall back to empty so downstream synth can skip un-linkable items
+    upstream_url = str(raw.get("url", "")).strip()
+    slug = str(raw.get("slug", "")).strip()
+    if upstream_url and upstream_url not in ("https://polymarket.com", "https://polymarket.com/"):
+        url = upstream_url
+    elif slug:
+        url = f"https://polymarket.com/event/{slug}"
+    else:
+        url = ""
 
     return Item(
         id=f"polymarket:{raw_id}",
