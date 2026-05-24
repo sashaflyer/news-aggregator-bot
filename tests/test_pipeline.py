@@ -103,3 +103,40 @@ async def test_run_digest_all_sources_fail(cfg, storage):
     assert result.status == "error"
     assert storage.get_source_health("reddit")["consecutive_failures"] == 1
     assert storage.get_source_health("polymarket")["consecutive_failures"] == 1
+
+
+def test_score_and_dedup_removes_near_duplicates():
+    from aggregator import pipeline
+    from datetime import datetime, timezone
+
+    items = [
+        Item(id="reddit:1", source="reddit",
+             title="Bitcoin hits new all-time high above $150,000 amid ETF inflows",
+             url="https://reddit.com/1",
+             text="Bitcoin reached a new all-time high above one hundred fifty thousand dollars today, driven by spot ETF inflows.",
+             created_at=datetime.now(timezone.utc),
+             engagement_raw={"upvotes": 1000}, metadata={"subreddit": "CryptoCurrency"}),
+        Item(id="reddit:2", source="reddit",
+             title="Bitcoin hits new all-time high above $150,000 driven by ETF flows",
+             url="https://reddit.com/2",
+             text="Bitcoin reached a new all-time high above one hundred fifty thousand dollars today, driven by ETF inflows from institutional buyers.",
+             created_at=datetime.now(timezone.utc),
+             engagement_raw={"upvotes": 500}, metadata={"subreddit": "Bitcoin"}),
+        Item(id="reddit:3", source="reddit",
+             title="Polymarket trader profile published in WSJ",
+             url="https://reddit.com/3",
+             text="A wealthy crypto trader on Polymarket was profiled in the Wall Street Journal yesterday.",
+             created_at=datetime.now(timezone.utc),
+             engagement_raw={"upvotes": 300}, metadata={"subreddit": "CryptoCurrency"}),
+    ]
+    out = pipeline._score_and_dedup(items, top_n=10, per_author_cap=3)
+    # The two near-duplicate Bitcoin items should collapse; only one survives.
+    bitcoin_ids = [it.id for it in out if "bitcoin" in it.title.lower()]
+    assert len(bitcoin_ids) == 1
+    # The unrelated polymarket item should still be present.
+    assert any(it.id == "reddit:3" for it in out)
+
+
+def test_score_and_dedup_handles_empty():
+    from aggregator import pipeline
+    assert pipeline._score_and_dedup([], top_n=10, per_author_cap=3) == []

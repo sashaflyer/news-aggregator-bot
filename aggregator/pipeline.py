@@ -15,6 +15,8 @@ from aggregator.sources.reddit import RedditSource
 from aggregator.storage import Storage
 from aggregator.synth import synthesize
 from aggregator.delivery.telegram import send_digest
+from aggregator.vendor.last30days import dedupe as _dedupe
+from aggregator.vendor.last30days import schema as _schema
 
 log = logging.getLogger(__name__)
 
@@ -43,23 +45,53 @@ async def _fetch_all(queries: dict[str, Any]) -> dict[str, list[Item] | Exceptio
     return dict(pairs)
 
 
+def _item_to_source_item(item: Item) -> "_schema.SourceItem":
+    """Convert our Item -> upstream SourceItem just enough for dedupe."""
+    return _schema.SourceItem(
+        item_id=item.id,
+        source=item.source,
+        title=item.title,
+        body=item.text,
+        url=item.url,
+        author=str(item.metadata.get("author") or "") or None,
+        container=str(item.metadata.get("subreddit") or "") or None,
+    )
+
+
+def _engagement_score(item: Item) -> float:
+    """Single sortable engagement number; same weights as v1."""
+    return (
+        item.engagement_raw.get("upvotes", 0)
+        + item.engagement_raw.get("score", 0)
+        + 0.1 * item.engagement_raw.get("comments", 0)
+        + 0.001 * (item.engagement_raw.get("volume") or 0)
+    )
+
+
 def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> list[Item]:
-    """V1 scoring: engagement-sum sort. Multi-factor scoring + per-author cap are
-    deferred to v2 once vendored upstream API is wrapped correctly.
+    """Dedupe near-duplicates via upstream Jaccard-based dedupe_items, then
+    sort by engagement, then truncate to top_n.
 
     Args:
-        per_author_cap: Currently unused; reserved for v2 when vendored rerank lands.
+        per_author_cap: Reserved for a future weighted_rrf wiring; currently
+            unused (per-author cap not yet enforced).
     """
-    return sorted(
-        items,
-        key=lambda i: (
-            i.engagement_raw.get("upvotes", 0)
-            + i.engagement_raw.get("score", 0)
-            + 0.1 * i.engagement_raw.get("comments", 0)
-            + 0.001 * (i.engagement_raw.get("volume") or 0)
-        ),
-        reverse=True,
-    )[:top_n]
+    if not items:
+        return []
+
+    by_id = {item.id: item for item in items}
+    source_items = [_item_to_source_item(it) for it in items]
+    try:
+        deduped = _dedupe.dedupe_items(source_items, threshold=0.7)
+    except Exception:
+        log.exception("upstream dedupe_items failed; falling back to raw items")
+        deduped = source_items
+
+    deduped_items = [by_id[si.item_id] for si in deduped if si.item_id in by_id]
+    log.info("dedupe: %d -> %d items", len(items), len(deduped_items))
+
+    ranked = sorted(deduped_items, key=_engagement_score, reverse=True)
+    return ranked[:top_n]
 
 
 async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
