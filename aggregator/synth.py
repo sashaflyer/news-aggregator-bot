@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from openai import OpenAI
@@ -14,6 +15,18 @@ from aggregator.prompts import load as load_prompt
 log = logging.getLogger(__name__)
 
 _client: OpenAI | None = None
+
+# gpt-5.4-mini frequently emits "word (https://url)" instead of the requested
+# "[word](https://url)" markdown link, even with explicit instructions and
+# examples in the prompt. This regex fixes that up after the fact so links are
+# clickable in Telegram. Matches a word + space + parenthesized http(s) URL,
+# but skips cases already inside a markdown link `[text](url)`.
+_BARE_URL_LINK_RE = re.compile(r"(?<!\])\b(\w+)\s+\((https?://[^\s)]+)\)")
+
+
+def _fix_bare_url_links(text: str) -> str:
+    """Convert `word (https://...)` -> `[word](https://...)` to make links clickable."""
+    return _BARE_URL_LINK_RE.sub(r"[\1](\2)", text)
 
 
 def _get_client() -> OpenAI:
@@ -56,4 +69,4 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
     text = resp.choices[0].message.content or ""
     log.info("synth done tokens=%s/%s/%s",
              resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens)
-    return text
+    return _fix_bare_url_links(text)

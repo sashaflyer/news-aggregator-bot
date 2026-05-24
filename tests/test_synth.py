@@ -84,3 +84,41 @@ def test_synthesize_truncates_to_max_input_items(cfg):
     prompt = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     payload = json.loads(prompt.split("```\n")[1].split("\n```")[0])
     assert len(payload) == cfg.synth.max_input_items
+
+
+def test_fix_bare_url_links_converts_word_paren_url():
+    from aggregator.synth import _fix_bare_url_links
+
+    text = "Story summary reddit (https://reddit.com/r/x/comments/abc/title)"
+    out = _fix_bare_url_links(text)
+    assert out == "Story summary [reddit](https://reddit.com/r/x/comments/abc/title)"
+
+
+def test_fix_bare_url_links_leaves_proper_markdown_alone():
+    from aggregator.synth import _fix_bare_url_links
+
+    text = "Story summary [reddit](https://reddit.com/r/x/comments/abc/title)"
+    out = _fix_bare_url_links(text)
+    assert out == text
+
+
+def test_fix_bare_url_links_handles_multiple():
+    from aggregator.synth import _fix_bare_url_links
+
+    text = (
+        "- First story reddit (https://reddit.com/1)\n"
+        "- Second story polymarket (https://polymarket.com/event/foo)\n"
+    )
+    out = _fix_bare_url_links(text)
+    assert "[reddit](https://reddit.com/1)" in out
+    assert "[polymarket](https://polymarket.com/event/foo)" in out
+    assert "reddit (https" not in out
+    assert "polymarket (https" not in out
+
+
+def test_fix_bare_url_links_handles_trailing_punctuation():
+    from aggregator.synth import _fix_bare_url_links
+
+    text = "Story reddit (https://reddit.com/1) and more."
+    out = _fix_bare_url_links(text)
+    assert "[reddit](https://reddit.com/1)" in out
