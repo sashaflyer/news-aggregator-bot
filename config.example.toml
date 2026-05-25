@@ -34,3 +34,13 @@ symbols = ["SOL", "SUI", "AVAX"]
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "0 8 * * *"
+
+[topics.ai_general]
+kind = "general"
+sources = ["reddit", "hackernews"]
+subreddits = ["MachineLearning", "LocalLLaMA", "singularity"]
+polymarket_tags = []
+hn_keywords = ["LLM", "AI", "Claude", "GPT", "Anthropic", "OpenAI", "Mistral", "Llama", "Gemini"]
+prompt_template = "ai_general.md"
+top_n = 15
+schedule = "30 8 * * *"

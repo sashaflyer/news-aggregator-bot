@@ -18,9 +18,12 @@ def test_build_scheduler_registers_one_job_per_topic(tmp_path):
         result = sched_mod.build_scheduler(cfg, s)
 
     assert result is instance
-    assert instance.add_job.call_count == 2
-    # Each add_job call's positional args have run_digest in args[0]; the topic_id is in args=("crypto_general", cfg, storage) tuple passed via kwarg
+    # One job per topic in the example config; assert the set matches what
+    # config.example.toml declares (so adding/removing example topics here
+    # doesn't break the test).
+    expected = sorted(cfg.topics.keys())
+    assert instance.add_job.call_count == len(expected)
     job_topic_args = sorted(
         call.kwargs["args"][0] for call in instance.add_job.call_args_list
     )
-    assert job_topic_args == ["crypto_general", "crypto_watchlist"]
+    assert job_topic_args == expected
