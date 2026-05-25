@@ -1,0 +1,5 @@
+# Force LF line endings on text files in both the repo and the working tree.
+# This project deploys to a Linux VPS (systemd unit, shell scripts, Python)
+# where CRLF would break things; LF everywhere keeps Windows checkouts from
+# constantly showing "modified" files due to autocrlf conversion.
+* text=auto eol=lf
