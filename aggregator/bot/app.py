@@ -9,6 +9,7 @@ from telegram.ext import Application, CommandHandler
 from aggregator.bot.commands.help import handle_help
 from aggregator.bot.commands.status import handle_status
 from aggregator.bot.commands.topics import handle_topics
+from aggregator.config import Config
 
 
 # Single source of truth for registered commands.
@@ -21,13 +22,14 @@ COMMANDS = [
 ]
 
 
-def build_application(*, storage, scheduler=None) -> Application:
+def build_application(*, storage, scheduler=None, cfg: Config) -> Application:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
 
     app = Application.builder().token(token).build()
     app.bot_data["storage"] = storage
     app.bot_data["scheduler"] = scheduler
+    app.bot_data["cfg"] = cfg
     app.bot_data["authorized_chat_id"] = chat_id
     app.bot_data["started_at"] = datetime.now(timezone.utc)
 

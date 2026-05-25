@@ -64,7 +64,7 @@ async def serve(*, config_path: str) -> None:
     _setup_logging()
     cfg, storage = _bootstrap(config_path)
     scheduler = build_scheduler(cfg, storage)
-    app = build_application(storage=storage, scheduler=scheduler)
+    app = build_application(storage=storage, scheduler=scheduler, cfg=cfg)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
