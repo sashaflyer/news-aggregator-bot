@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from aggregator.config import TopicConfig
+from aggregator.config import TopicConfig, WatchEntry
 from aggregator.storage import Storage
 
 
@@ -30,7 +30,10 @@ def _sample_topics() -> dict[str, TopicConfig]:
         "crypto_watchlist": TopicConfig(
             kind="watchlist",
             sources=["reddit"],
-            symbols=["SOL", "SUI"],
+            watch=[
+                WatchEntry(ticker="SOL", aliases=["Solana"]),
+                WatchEntry(ticker="SUI"),
+            ],
             prompt_template="watchlist.md",
             per_symbol_top_n=5,
             schedule="0 8 * * *",
@@ -67,7 +70,10 @@ def test_seed_topics_persists_query_payload(storage):
     assert g["prompt_template"] == "general_crypto.md"
     w = json.loads(rows["crypto_watchlist"]["search_queries"])
     assert w["kind"] == "watchlist"
-    assert w["symbols"] == ["SOL", "SUI"]
+    assert w["watch"] == [
+        {"ticker": "SOL", "aliases": ["Solana"]},
+        {"ticker": "SUI", "aliases": []},
+    ]
 
 
 def test_record_source_health_failure_then_success(storage):

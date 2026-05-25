@@ -58,8 +58,12 @@ def test_synthesize_watchlist_includes_symbols(cfg, items):
         out = synth.synthesize("crypto_watchlist", items, cfg=cfg)
 
     prompt = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
-    for sym in cfg.topics["crypto_watchlist"].symbols:
+    for sym in cfg.topics["crypto_watchlist"].canonical_symbols:
         assert sym in prompt
+    # Aliases must also reach the prompt so the LLM groups them under the ticker.
+    for entry in cfg.topics["crypto_watchlist"].watch:
+        for alias in entry.aliases:
+            assert alias in prompt
     assert "SOL" in out
 
 

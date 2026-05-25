@@ -199,7 +199,9 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         "subreddits": topic.subreddits,
         "polymarket_tags": topic.polymarket_tags,
         "hn_keywords": topic.hn_keywords,
-        "symbols": topic.symbols,
+        # Expand watch entries to (ticker + aliases) so source searches widen
+        # recall (e.g., "SUI" + "Sui Network" both hit Reddit/HN).
+        "symbols": topic.query_symbols,
     }
 
     per_source = await _fetch_all(queries, topic.sources)
@@ -240,7 +242,8 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
     if topic.kind == "general":
         top_n = topic.top_n  # type: ignore[assignment]
     else:
-        top_n = topic.per_symbol_top_n * len(topic.symbols)  # type: ignore[operator]
+        # Cap is per *coin* (canonical ticker), not per alias query.
+        top_n = topic.per_symbol_top_n * len(topic.canonical_symbols)  # type: ignore[operator]
 
     ranked = _score_and_dedup(items, top_n=top_n, per_author_cap=cfg.scoring.per_author_cap)
 

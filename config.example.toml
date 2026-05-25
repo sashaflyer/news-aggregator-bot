@@ -30,10 +30,21 @@ schedule = "0 8 * * *"
 [topics.crypto_watchlist]
 kind = "watchlist"
 sources = ["reddit", "polymarket", "hackernews"]
-symbols = ["SOL", "SUI", "AVAX"]
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "0 8 * * *"
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "SOL"
+  aliases = ["Solana"]
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "SUI"
+  aliases = ["Sui Network"]
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "AVAX"
+  aliases = ["Avalanche"]
 
 [topics.ai_general]
 kind = "general"

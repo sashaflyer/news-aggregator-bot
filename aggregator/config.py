@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 _CRON_RE = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
 
@@ -25,12 +25,21 @@ class ScheduleConfig(BaseModel):
     timezone: str
 
 
+class WatchEntry(BaseModel):
+    """One coin/project the watchlist tracks. `ticker` is the canonical name
+    shown in the digest; `aliases` are extra strings (full name, variants)
+    fed to source searches to widen recall without diluting the prompt.
+    """
+    ticker: str = Field(min_length=1)
+    aliases: list[str] = Field(default_factory=list)
+
+
 class TopicConfig(BaseModel):
     """Data-driven topic definition. One entry per [topics.<id>] table.
 
     `kind` switches the digest shape:
     - "general"   -> rank globally, keep top_n.
-    - "watchlist" -> per_symbol_top_n * len(symbols) cap, requires symbols.
+    - "watchlist" -> per_symbol_top_n * len(watch) cap, requires `watch` entries.
     """
     kind: Literal["general", "watchlist"]
     sources: list[str] = Field(min_length=1)
@@ -42,7 +51,7 @@ class TopicConfig(BaseModel):
     subreddits: list[str] = Field(default_factory=list)
     polymarket_tags: list[str] = Field(default_factory=list)
     hn_keywords: list[str] = Field(default_factory=list)
-    symbols: list[str] = Field(default_factory=list)
+    watch: list[WatchEntry] = Field(default_factory=list)
 
     @field_validator("schedule")
     @classmethod
@@ -66,9 +75,25 @@ class TopicConfig(BaseModel):
         if self.kind == "watchlist":
             if self.per_symbol_top_n is None:
                 raise ValueError("kind='watchlist' requires per_symbol_top_n")
-            if not self.symbols:
-                raise ValueError("kind='watchlist' requires non-empty symbols")
+            if not self.watch:
+                raise ValueError("kind='watchlist' requires non-empty watch entries")
         return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def canonical_symbols(self) -> list[str]:
+        """Tickers as shown in the digest (one per coin/project)."""
+        return [w.ticker for w in self.watch]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def query_symbols(self) -> list[str]:
+        """Tickers + aliases — the union fed to source searches."""
+        out: list[str] = []
+        for w in self.watch:
+            out.append(w.ticker)
+            out.extend(w.aliases)
+        return out
 
 
 class ScoringConfig(BaseModel):

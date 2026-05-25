@@ -48,10 +48,19 @@ schedule = "0 8 * * *"
 [topics.crypto_watchlist]
 kind = "watchlist"
 sources = ["reddit", "polymarket"]
-symbols = ["SOL", "SUI", "AVAX"]
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "0 8 * * *"
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "SOL"
+  aliases = ["Solana"]
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "SUI"
+
+  [[topics.crypto_watchlist.watch]]
+  ticker = "AVAX"
 """)
     cfg = load_config(cfg_path)
     assert isinstance(cfg, Config)
@@ -63,7 +72,8 @@ schedule = "0 8 * * *"
     assert g.top_n == 10
     w = cfg.topics["crypto_watchlist"]
     assert w.kind == "watchlist"
-    assert w.symbols == ["SOL", "SUI", "AVAX"]
+    assert w.canonical_symbols == ["SOL", "SUI", "AVAX"]
+    assert w.query_symbols == ["SOL", "Solana", "SUI", "AVAX"]
     assert w.per_symbol_top_n == 5
 
 
@@ -80,7 +90,7 @@ schedule = "0 8 * * *"
         load_config(cfg_path)
 
 
-def test_rejects_watchlist_without_symbols(tmp_path):
+def test_rejects_watchlist_without_watch_entries(tmp_path):
     cfg_path = write_toml(tmp_path, _BASE_SECTIONS + """
 [topics.t]
 kind = "watchlist"
@@ -89,7 +99,7 @@ prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "0 8 * * *"
 """)
-    with pytest.raises(ValueError, match="symbols"):
+    with pytest.raises(ValueError, match="watch"):
         load_config(cfg_path)
 
 
@@ -98,9 +108,11 @@ def test_rejects_watchlist_without_per_symbol_top_n(tmp_path):
 [topics.t]
 kind = "watchlist"
 sources = ["reddit"]
-symbols = ["SOL"]
 prompt_template = "watchlist.md"
 schedule = "0 8 * * *"
+
+  [[topics.t.watch]]
+  ticker = "SOL"
 """)
     with pytest.raises(ValueError, match="per_symbol_top_n"):
         load_config(cfg_path)

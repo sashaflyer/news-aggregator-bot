@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from aggregator.bot.commands.status import handle_status
-from aggregator.config import TopicConfig
+from aggregator.config import TopicConfig, WatchEntry
 from aggregator.storage import Storage
 
 
@@ -19,7 +19,8 @@ def storage(tmp_path):
             top_n=10, schedule="0 8 * * *",
         ),
         "crypto_watchlist": TopicConfig(
-            kind="watchlist", sources=["reddit"], symbols=["SOL"],
+            kind="watchlist", sources=["reddit"],
+            watch=[WatchEntry(ticker="SOL")],
             prompt_template="watchlist.md", per_symbol_top_n=5,
             schedule="0 8 * * *",
         ),

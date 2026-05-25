@@ -70,17 +70,34 @@ def _sanitize_for_html(item_dict: dict[str, Any]) -> dict[str, Any]:
 def _query_for_topic(topic_id: str, cfg: Config) -> str:
     """Single string used by the snippet extractor to score window relevance.
 
-    For watchlist topics, use the symbol list. For general topics, prefer
-    hn_keywords -> polymarket_tags -> a generic fallback.
+    For watchlist topics, use the full ticker+alias union so snippet windows
+    catch either form. For general topics, prefer hn_keywords ->
+    polymarket_tags -> a generic fallback.
     """
     topic = cfg.topics[topic_id]
     if topic.kind == "watchlist":
-        return " ".join(topic.symbols)
+        return " ".join(topic.query_symbols)
     if topic.hn_keywords:
         return " ".join(topic.hn_keywords)
     if topic.polymarket_tags:
         return " ".join(topic.polymarket_tags)
     return topic_id
+
+
+def _format_watch_symbols(topic) -> str:
+    """Render the watch list as canonical tickers with parenthesized aliases.
+
+    Example: ``SOL (also: Solana), SUI (also: Sui Network), AVAX``. Lets the
+    prompt show one canonical bucket per coin while telling the LLM which
+    alternate strings in item titles still count toward that bucket.
+    """
+    parts: list[str] = []
+    for w in topic.watch:
+        if w.aliases:
+            parts.append(f"{w.ticker} (also: {', '.join(w.aliases)})")
+        else:
+            parts.append(w.ticker)
+    return ", ".join(parts)
 
 
 def _get_client() -> OpenAI:
@@ -101,7 +118,7 @@ def _build_prompt(topic_id: str, items: list[dict[str, Any]], cfg: Config) -> st
     template = load_prompt(topic.prompt_template)
     if topic.kind == "watchlist":
         return template.format(
-            symbols=", ".join(topic.symbols),
+            symbols=_format_watch_symbols(topic),
             items_json=items_json,
         )
     return template.format(n_items=len(items), items_json=items_json)

@@ -106,7 +106,8 @@ class Storage:
                 "sources": ["reddit", ...],
                 "prompt_template": "general_crypto.md",
                 "subreddits": [...], "polymarket_tags": [...],
-                "hn_keywords": [...], "symbols": [...]
+                "hn_keywords": [...],
+                "watch": [{"ticker": "SOL", "aliases": ["Solana"]}, ...]
             }
 
         Consumers (pipeline, synth) decode this back from the row when needed.
@@ -119,7 +120,10 @@ class Storage:
                 "subreddits": list(topic.subreddits),
                 "polymarket_tags": list(topic.polymarket_tags),
                 "hn_keywords": list(topic.hn_keywords),
-                "symbols": list(topic.symbols),
+                "watch": [
+                    {"ticker": w.ticker, "aliases": list(w.aliases)}
+                    for w in topic.watch
+                ],
             })
             self._upsert_topic(topic_id, search_queries, topic.schedule)
 
