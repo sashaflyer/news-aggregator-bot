@@ -8,6 +8,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from aggregator.bot._authz import is_authorized
 from aggregator.delivery.telegram import _chunk
 
 
@@ -30,11 +31,9 @@ def _fmt_uptime(seconds: float) -> str:
 
 
 async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    data = context.bot_data
-    authorized = data["authorized_chat_id"]
-    if update.effective_chat is None or update.effective_chat.id != authorized:
+    if not is_authorized(update, context):
         return
-
+    data = context.bot_data
     storage = data["storage"]
     started_at: datetime = data["started_at"]
     scheduler: Any = data.get("scheduler")
