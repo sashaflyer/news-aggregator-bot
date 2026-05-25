@@ -6,7 +6,17 @@ from datetime import datetime, timezone
 
 from telegram.ext import Application, CommandHandler
 
+from aggregator.bot.commands.help import handle_help
 from aggregator.bot.commands.status import handle_status
+
+
+# Single source of truth for registered commands.
+# Each entry: (name, one-line description, handler).
+# /help renders this list. setMyCommands (Task 8) reads from it.
+COMMANDS = [
+    ("status", "Bot uptime, last runs, source health", handle_status),
+    ("help",   "List available commands",              handle_help),
+]
 
 
 def build_application(*, storage, scheduler=None) -> Application:
@@ -19,7 +29,7 @@ def build_application(*, storage, scheduler=None) -> Application:
     app.bot_data["authorized_chat_id"] = chat_id
     app.bot_data["started_at"] = datetime.now(timezone.utc)
 
-    app.add_handler(CommandHandler("status", handle_status))
-    # Add new commands here: app.add_handler(CommandHandler("<name>", handle_<name>))
+    for name, _description, handler in COMMANDS:
+        app.add_handler(CommandHandler(name, handler))
 
     return app
