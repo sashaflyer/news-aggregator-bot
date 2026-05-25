@@ -82,7 +82,9 @@ def test_synthesize_truncates_to_max_input_items(cfg):
         synth.synthesize("crypto_general", many, cfg=cfg)
 
     prompt = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
-    payload = json.loads(prompt.split("```\n")[1].split("\n```")[0])
+    # Items JSON is the LAST fenced block in the prompt (after "ITEMS (JSON):").
+    items_block = prompt.split("ITEMS (JSON):\n```\n", 1)[1].rsplit("\n```", 1)[0]
+    payload = json.loads(items_block)
     assert len(payload) == cfg.synth.max_input_items
 
 
