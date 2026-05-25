@@ -166,6 +166,27 @@ def test_synthesize_raises_on_empty_content(cfg, items):
             synth.synthesize("crypto_general", items, cfg=cfg)
 
 
+def test_synthesize_raises_on_length_truncation(cfg, items):
+    """finish_reason='length' produces partial HTML that Telegram rejects;
+    surface it as a hard error instead of shipping a malformed digest.
+    """
+    from aggregator import synth
+
+    truncated_choice = MagicMock(
+        finish_reason="length",
+        message=MagicMock(content="<b>📰 What moved</b>\n\nBTC pushed"),
+    )
+    fake_resp = MagicMock()
+    fake_resp.choices = [truncated_choice]
+    fake_resp.usage = MagicMock(prompt_tokens=100, completion_tokens=4096, total_tokens=4196)
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_resp
+
+    with patch.object(synth, "_get_client", return_value=fake_client):
+        with pytest.raises(RuntimeError, match="max_completion_tokens"):
+            synth.synthesize("crypto_general", items, cfg=cfg)
+
+
 def test_synthesize_handles_none_usage(cfg, items):
     """If the OpenAI response has usage=None, don't crash after a good call."""
     from aggregator import synth

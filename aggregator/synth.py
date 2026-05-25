@@ -151,7 +151,18 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
         max_completion_tokens=cfg.synth.max_output_tokens,
         reasoning_effort="medium",
     )
-    text = (resp.choices[0].message.content or "").strip()
+    choice = resp.choices[0]
+
+    # Truncation produces partial HTML (missing closing tag on the final
+    # bullet); Telegram rejects the whole message. Surface this as a loud
+    # error instead of silently delivering malformed output.
+    if getattr(choice, "finish_reason", None) == "length":
+        raise RuntimeError(
+            f"LLM hit max_completion_tokens={cfg.synth.max_output_tokens}; "
+            "raise synth.max_output_tokens or shorten the prompt"
+        )
+
+    text = (choice.message.content or "").strip()
 
     # Some proxies/models return ``usage = None``; don't crash after a
     # successful call just because the metrics aren't present.
