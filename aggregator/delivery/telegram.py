@@ -76,7 +76,9 @@ async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                 log.warning("telegram rejected %s formatting; retrying chunk as plain text",
                             payload["parse_mode"])
                 fallback = dict(payload)
-                fallback["parse_mode"] = None
+                # Telegram requires the field to be ABSENT for plain text;
+                # sending `parse_mode: null` gets rejected as "unsupported".
+                fallback.pop("parse_mode", None)
                 resp2 = await _post(client, token, fallback)
                 if resp2.status_code == 200 and resp2.json().get("ok"):
                     return resp2.json()["result"]["message_id"]

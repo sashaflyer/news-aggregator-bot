@@ -108,8 +108,9 @@ async def test_parse_error_falls_back_to_plain_text(cfg):
         body0 = calls[0].request.read().decode()
         body1 = calls[1].request.read().decode()
         assert "HTML" in body0  # first attempt used configured parse_mode
-        # Second attempt: parse_mode is null/None (sent as JSON null)
-        assert '"parse_mode": null' in body1 or '"parse_mode":null' in body1
+        # Second attempt: parse_mode is OMITTED from the payload (Telegram
+        # rejects `parse_mode: null` as unsupported).
+        assert '"parse_mode"' not in body1
 
 
 @pytest.mark.asyncio
