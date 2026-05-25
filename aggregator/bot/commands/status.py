@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from html import escape as _html_escape
 from typing import Any
 
 from telegram import Update
@@ -37,15 +38,24 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     scheduler: Any = data.get("scheduler")
 
     uptime = (datetime.now(timezone.utc) - started_at).total_seconds()
-    lines = ["*news-aggregator status*", "", f"Uptime: {_fmt_uptime(uptime)}", ""]
+    # Use HTML markup. Topic names (e.g., crypto_general) contain underscores
+    # which legacy Markdown would interpret as italic markers and reject the
+    # whole message. HTML doesn't care about underscores.
+    lines = [
+        "<b>news-aggregator status</b>",
+        "",
+        f"Uptime: {_fmt_uptime(uptime)}",
+        "",
+    ]
 
     for topic_row in storage.list_topics():
-        topic = topic_row["name"]
-        last = storage.last_run(topic)
+        topic = _html_escape(topic_row["name"])
+        last = storage.last_run(topic_row["name"])
         if last:
+            status_str = _html_escape(str(last.get("status") or "?"))
             lines.append(
                 f"Last digest ({topic}): {_fmt_dt(last['finished_at'])} "
-                f"{last['status']} ({last.get('items_delivered', 0)} items)"
+                f"{status_str} ({last.get('items_delivered', 0)} items)"
             )
         else:
             lines.append(f"Last digest ({topic}): never")
@@ -60,11 +70,14 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             lines.append(f"Next scheduled run: {_fmt_dt(nxt)}")
 
     lines.append("")
-    lines.append("Source health:")
+    lines.append("<b>Source health:</b>")
     for h in storage.all_source_health():
         last_ok = _fmt_dt(h.get("last_success_at"))
         fails = h.get("consecutive_failures", 0)
         status = "ok" if fails == 0 else f"{fails} consecutive fails"
-        lines.append(f"  {h['source']}: {status}  last success {last_ok}")
+        lines.append(
+            f"  {_html_escape(h['source'])}: {_html_escape(status)}  "
+            f"last success {last_ok}"
+        )
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")

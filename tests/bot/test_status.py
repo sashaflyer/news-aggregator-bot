@@ -56,10 +56,17 @@ async def test_status_authorized_chat_replies(storage):
     ctx = make_ctx(storage, started_at=datetime.now(timezone.utc))
     await handle_status(upd, ctx)
     upd.message.reply_text.assert_awaited_once()
-    text = upd.message.reply_text.await_args.args[0]
+    call = upd.message.reply_text.await_args
+    text = call.args[0]
     assert "status" in text.lower()
     assert "crypto_general" in text
     assert "reddit" in text
+    # Reply must use HTML parse_mode (topic names contain underscores that
+    # would break legacy Markdown).
+    assert call.kwargs.get("parse_mode") == "HTML"
+    # Must not emit Markdown-style markup that would render as literal asterisks.
+    assert "*news-aggregator" not in text
+    assert "<b>news-aggregator status</b>" in text
 
 
 @pytest.mark.asyncio
