@@ -1,0 +1,35 @@
+[
+  {
+    "objectID": "39000001",
+    "title": "Show HN: I built a Bitcoin lightning network explorer",
+    "url": "https://example.com/btc-explorer",
+    "story_text": "",
+    "points": 250,
+    "num_comments": 45,
+    "author": "lightning_dev",
+    "created_at": "2026-05-24T10:00:00.000Z",
+    "created_at_i": 1716545200
+  },
+  {
+    "objectID": "39000002",
+    "title": "Ethereum's verkle tree migration explained",
+    "url": "https://example.com/verkle",
+    "story_text": "",
+    "points": 180,
+    "num_comments": 62,
+    "author": "eth_researcher",
+    "created_at": "2026-05-24T12:30:00.000Z",
+    "created_at_i": 1716554200
+  },
+  {
+    "objectID": "39000003",
+    "title": "Ask HN: Is anyone still using SOL after the latest outage?",
+    "url": "https://news.ycombinator.com/item?id=39000003",
+    "story_text": "Curious to hear from production users.",
+    "points": 95,
+    "num_comments": 120,
+    "author": "curious_dev",
+    "created_at": "2026-05-24T14:00:00.000Z",
+    "created_at_i": 1716559600
+  }
+]

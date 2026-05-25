@@ -4,6 +4,8 @@ timezone = "Europe/Warsaw"
 [crypto.general]
 subreddits = ["CryptoCurrency", "CryptoMarkets", "ethfinance"]
 polymarket_tags = ["crypto"]
+# Optional: explicit HN search keywords. Defaults to polymarket_tags above.
+# hn_keywords = ["crypto", "bitcoin", "ethereum"]
 top_n = 15
 schedule = "0 8 * * *"
 

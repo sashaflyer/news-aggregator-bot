@@ -10,6 +10,7 @@ from typing import Any
 
 from aggregator.config import Config
 from aggregator.sources.base import Item, Source
+from aggregator.sources.hn import HnSource
 from aggregator.sources.polymarket import PolymarketSource
 from aggregator.sources.reddit import RedditSource
 from aggregator.storage import Storage
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 SOURCES: dict[str, Source] = {
     "reddit": RedditSource(),
     "polymarket": PolymarketSource(),
+    "hackernews": HnSource(),
 }
 
 

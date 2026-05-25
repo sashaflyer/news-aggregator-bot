@@ -44,6 +44,7 @@ MODULES = [
     "query.py",
     "providers.py",
     "snippet.py",
+    "hackernews.py",
 ]
 
 # Modules vendored from paths OTHER than BASE_PATH.

@@ -27,6 +27,7 @@ To reproduce this exact vendor: `python scripts/vendor_last30days.py 1e03af19e0a
 - `query.py`
 - `providers.py`
 - `snippet.py`
+- `hackernews.py`
 
 ## Vendored modules (from other paths)
 

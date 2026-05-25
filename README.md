@@ -1,6 +1,6 @@
 # news-aggregator
 
-Personal AI crypto research aggregator. Delivers a daily Telegram digest of crypto signals (general + SOL/SUI/AVAX watchlist) from Reddit and Polymarket, synthesized by OpenAI.
+Personal AI crypto research aggregator. Delivers a daily Telegram digest of crypto signals (general + SOL/SUI/AVAX watchlist) from Reddit, Polymarket, and Hacker News, synthesized by OpenAI.
 
 ## How it works
 
@@ -9,7 +9,7 @@ A single long-running Python process runs on a Linux VPS under systemd. It holds
 - A Telegram bot polling loop (`/status` command in v1)
 - An APScheduler cron job that fires the daily digest pipeline at the configured time
 
-The pipeline fetches the last 24h of items from Reddit and Polymarket, deduplicates and ranks them by engagement, asks OpenAI to synthesize a readable digest, and sends it to the configured Telegram chat.
+The pipeline fetches the last 24h of items from Reddit (hot listings + watchlist symbol search), Polymarket (event search by tag/symbol), and Hacker News (Algolia keyword search). It deduplicates near-duplicates via Jaccard similarity, enforces a per-author cap, sorts by engagement, enriches top Reddit items with their top comments, and asks OpenAI to synthesize a readable digest using the community context. Previously-delivered items are filtered out for `[scoring] dedup_window_days` so the next day doesn't repeat today.
 
 ## Quickstart (development on Windows)
 
