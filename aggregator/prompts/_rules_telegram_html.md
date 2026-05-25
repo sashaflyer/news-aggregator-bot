@@ -20,5 +20,6 @@ CONTENT RULES (universal):
 
 - Do NOT invent facts. Every claim must trace to an item in the user message.
 - If a claim cannot be verified from the item's own fields, either omit it or hedge it ("reportedly", "according to OP"). Never assert.
-- Do NOT include items you judge low-signal even if they rank high (generic takes, low-effort memes, unverified rumors).
+- Skip only obvious low-effort content (memes without substance, naked price-pump posts, rumors already refuted in the comments). The items reached this prompt because the upstream filter (engagement + dedup + per-author cap) rated them top; don't second-guess that ranking unless an item is clearly noise.
+- The input is already filtered to the top items. Use most of what survived — when a section permits a range of bullets, lean toward the upper end unless duplicate themes or obvious noise force fewer.
 - When an item's metadata includes `top_comments` or `comment_insights`, use them as additional context for what the post is about and how the community received it. Prefer phrasing that reflects community sentiment over the headline alone. Example: if a post's title is "New SOTA on benchmark X" but top comments find the benchmark cherry-picked, lead with the skepticism, not the headline.

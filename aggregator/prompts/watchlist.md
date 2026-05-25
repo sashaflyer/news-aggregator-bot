@@ -19,6 +19,7 @@ BEGIN EXAMPLE
 <b>🪙 SUI</b>
 
 • Sui Foundation announced a 10M grant program for AI-adjacent dApps; commenters note three of four launch partners are foundation-backed already. <a href="https://reddit.com/r/sui/comments/jkl">↗</a>
+• A polymarket on "SUI above $5 by July 1" jumped from 12 to 24 percent on 800K volume. <a href="https://polymarket.com/event/sui-5-jul">↗</a>
 
 <b>🪙 AVAX</b>
 
@@ -28,7 +29,7 @@ END EXAMPLE
 SHAPE SPEC:
 
 - One `<b>🪙 SYMBOL</b>` header per canonical ticker — bold tag wrapping the coin emoji, a space, and the symbol name.
-- 1 to 3 bullets per symbol.
+- Aim for 2-3 bullets per symbol when input supports it. Drop to 1 only when the remaining items for that symbol are duplicates of each other or clearly off-topic.
 - If a symbol has zero notable items, render the block with a single bullet: `• no notable activity.` (note the trailing period).
 - Keep total length under 1800 characters.
 

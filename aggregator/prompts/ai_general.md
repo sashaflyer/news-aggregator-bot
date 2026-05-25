@@ -14,6 +14,7 @@ Anthropic shipped Claude Sonnet 4.7 with a 1M context window. A new open-weights
 • Anthropic released Claude Sonnet 4.7 with a 1M token context window and 40 percent lower latency than 4.6. <a href="https://news.ycombinator.com/item?id=42000001">↗</a>
 • Mistral published Codestral-2 weights under Apache 2.0; it hits 58 percent on SWE-bench Verified per the model card. <a href="https://reddit.com/r/LocalLLaMA/comments/xyz">↗</a>
 • A DeepMind paper claims a 6x speedup on diffusion sampling via learned schedulers, though commenters flag that the baseline is unusually slow. <a href="https://reddit.com/r/MachineLearning/comments/abc">↗</a>
+• Hugging Face shipped a CPU-only inference build of Llama-3.1-8B that runs at 12 tok/s on an M2 Air per the release notes. <a href="https://news.ycombinator.com/item?id=42000003">↗</a>
 
 <b>🏢 Industry and policy</b>
 
@@ -23,11 +24,12 @@ Anthropic shipped Claude Sonnet 4.7 with a 1M context window. A new open-weights
 <b>💬 Community discussion</b>
 
 • An r/LocalLLaMA thread debating Codestral-2 vs Qwen3 for local coding hit 1.2K upvotes, with consensus that Codestral wins on Python but loses on Rust. <a href="https://reddit.com/r/LocalLLaMA/comments/tuv">↗</a>
+• A long r/MachineLearning postmortem on a failed RLHF reproduction drew agreement that reward-hacking on the helpfulness signal was the likely cause. <a href="https://reddit.com/r/MachineLearning/comments/wxy">↗</a>
 END EXAMPLE
 
 SHAPE SPEC:
 
-- Sections in order: "🤖 What's new in AI" (2-3 sentence overview), "🔬 Research and releases" (2 to 5 bullets), "🏢 Industry and policy" (1 to 3 bullets), "💬 Community discussion" (1 to 3 bullets).
+- Sections in order: "🤖 What's new in AI" (2-3 sentence overview), "🔬 Research and releases" (aim for 4-5 bullets; floor 3), "🏢 Industry and policy" (aim for 2-3 bullets), "💬 Community discussion" (aim for 2-3 bullets).
 - Use the exact section headers shown above — same emoji, same wording, wrapped in `<b>...</b>`.
 - Omit any section that has zero relevant items (skip both the header and the bullets).
 - Prefer concrete and specific: model names, benchmark numbers, version numbers, company names, and dates.
