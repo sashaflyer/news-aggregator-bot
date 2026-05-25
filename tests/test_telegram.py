@@ -35,7 +35,7 @@ async def test_short_message_sent_once(cfg):
         assert route.call_count == 1
         body = route.calls[0].request.read().decode()
         assert "hello world" in body
-        assert '"parse_mode":"Markdown"' in body
+        assert '"parse_mode":"HTML"' in body
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_parse_error_falls_back_to_plain_text(cfg):
         assert len(calls) == 2
         body0 = calls[0].request.read().decode()
         body1 = calls[1].request.read().decode()
-        assert "Markdown" in body0  # first attempt used configured parse_mode
+        assert "HTML" in body0  # first attempt used configured parse_mode
         # Second attempt: parse_mode is null/None (sent as JSON null)
         assert '"parse_mode": null' in body1 or '"parse_mode":null' in body1
 
