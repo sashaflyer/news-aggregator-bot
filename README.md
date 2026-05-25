@@ -36,8 +36,8 @@ Reddit's mood is cautiously skeptical; Polymarket is pricing in further upside.
 - **Data-driven topics** — adding a new digest stream (e.g., geopolitics, climate) is a single `[topics.<id>]` block in `config.toml`. No code changes.
 - **systemd-managed** with auto-restart on failure.
 - **HTML-mode Telegram delivery** with a plain-text fallback if the LLM emits malformed markup. The user never sees a silent failure.
-- **Bot command surface** with `/status` in v1 and a clear extension pattern (`aggregator/bot/commands/<name>.py` + one line in `app.py`).
-- **77 offline tests** covering pipeline, sources, scoring, dedup, synthesis, delivery, and the bot.
+- **Bot command surface** with `/status`, `/digest`, `/topics`, and `/help` in v2 — plus a clear extension pattern (`aggregator/bot/commands/<name>.py` + one entry in the `COMMANDS` list in `app.py`). `/digest <topic_id>` triggers a real run on demand; a per-topic lock prevents it from racing the scheduler.
+- **110 offline tests** covering pipeline, sources, scoring, dedup, synthesis, delivery, and the bot.
 
 ## Architecture
 
@@ -142,14 +142,26 @@ To add a new topic, copy a block, change the id and fields, drop a matching prom
 
 ```python
 # aggregator/bot/commands/ping.py
+from aggregator.bot._authz import is_authorized
+
 async def handle_ping(update, context):
+    if not is_authorized(update, context):
+        return
     await update.message.reply_text("pong")
 ```
 
-Register in `aggregator/bot/app.py`:
+Register in `aggregator/bot/app.py` by appending one entry to `COMMANDS`:
 ```python
-app.add_handler(CommandHandler("ping", handle_ping))
+COMMANDS = [
+    ("status", "Bot uptime, last runs, source health",      handle_status),
+    ("digest", "Run a digest now: /digest <topic_id>",      handle_digest),
+    ("topics", "List configured topics, schedule, sources", handle_topics),
+    ("ping",   "Reply with pong",                           handle_ping),  # new
+    ("help",   "List available commands",                   handle_help),
+]
 ```
+
+`/help` and the Telegram `/` autocomplete menu (`setMyCommands` at startup) both read from `COMMANDS`, so the new command shows up everywhere automatically.
 
 ### Adding a source
 
@@ -205,11 +217,13 @@ aggregator/
 ├── sources/                 # one file per source: reddit.py, polymarket.py, hn.py
 ├── delivery/telegram.py     # HTML mode with plain-text fallback
 ├── bot/
-│   ├── app.py               # PTB Application factory
-│   └── commands/status.py   # /status handler
+│   ├── app.py               # PTB Application factory + COMMANDS registry + publish_commands
+│   ├── _authz.py            # shared chat-id authorization check
+│   ├── digest_lock.py       # per-topic asyncio.Lock (scheduler ↔ /digest)
+│   └── commands/            # one file per command: status.py, digest.py, topics.py, help.py
 └── vendor/last30days/       # vendored upstream (MIT)
 deploy/                      # systemd unit + install guide
-tests/                       # 77 offline tests
+tests/                       # 110 offline tests
 ```
 
 ## Attribution
