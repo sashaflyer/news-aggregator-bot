@@ -1,5 +1,5 @@
 [schedule]
-timezone = "Europe/Warsaw"
+timezone = "Europe/Moscow"
 
 [scoring]
 dedup_window_days = 7
