@@ -60,3 +60,5 @@ async def test_publish_commands_swallows_errors():
     bot.set_my_commands = AsyncMock(side_effect=RuntimeError("telegram unreachable"))
     # Must not raise.
     await publish_commands(bot)
+    # Confirm we actually reached the failing call (not silently short-circuited).
+    bot.set_my_commands.assert_awaited_once()
