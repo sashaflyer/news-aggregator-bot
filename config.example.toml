@@ -9,7 +9,7 @@ per_author_cap = 3
 [synth]
 model = "gpt-5.4-mini"
 max_input_items = 40
-max_output_tokens = 1200
+max_output_tokens = 4096
 
 [telegram]
 parse_mode = "HTML"

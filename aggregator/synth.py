@@ -122,7 +122,7 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
         model=cfg.synth.model,
         messages=[{"role": "user", "content": prompt}],
         max_completion_tokens=cfg.synth.max_output_tokens,
-        temperature=0.3,
+        reasoning_effort="medium",
     )
     text = (resp.choices[0].message.content or "").strip()
 
