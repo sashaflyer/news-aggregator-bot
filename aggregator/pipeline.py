@@ -14,6 +14,7 @@ from aggregator.sources.hn import HnSource
 from aggregator.sources.polymarket import PolymarketSource
 from aggregator.sources.reddit import RedditSource
 from aggregator.storage import Storage
+from aggregator.relevance import filter_crypto_watchlist_items
 from aggregator.synth import synthesize_async
 from aggregator.delivery.telegram import send_digest
 from aggregator.vendor.last30days import dedupe as _dedupe
@@ -238,6 +239,17 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         items = [it for it in items if it.url not in recent_urls]
         log.info("filtered %d previously-delivered items; %d remain",
                  before - len(items), len(items))
+
+    # Watchlist symbol search (e.g. for "SOL", "AVAX") hits global Reddit/HN and
+    # pulls in NHL teams, video games, perfume brands. Drop off-domain items
+    # before they consume ranking budget or LLM tokens.
+    if topic.kind == "watchlist":
+        before = len(items)
+        items = filter_crypto_watchlist_items(items, topic.subreddits)
+        dropped = before - len(items)
+        if dropped:
+            log.info("watchlist relevance filter: dropped %d off-topic items; %d remain",
+                     dropped, len(items))
 
     if topic.kind == "general":
         top_n = topic.top_n  # type: ignore[assignment]
