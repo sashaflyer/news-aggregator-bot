@@ -179,6 +179,12 @@ def test_watch_entry_rejects_whitespace_ticker():
         WatchEntry(ticker="   ")
 
 
+def test_watch_entry_rejects_single_char_ticker():
+    from aggregator.config import WatchEntry
+    with pytest.raises(ValidationError):
+        WatchEntry(ticker="X")
+
+
 def test_topic_strips_and_rejects_empty_list_items():
     with pytest.raises(ValidationError):
         TopicConfig(

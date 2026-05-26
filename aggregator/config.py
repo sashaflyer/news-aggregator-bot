@@ -57,7 +57,13 @@ class WatchEntry(BaseModel):
     @field_validator("ticker")
     @classmethod
     def _v_ticker(cls, v: str) -> str:
-        return _strip_nonempty_str(v)
+        s = _strip_nonempty_str(v)
+        # Single-character tickers over-match in Polymarket's word-boundary
+        # title regex (sources/polymarket.py:_matches_any_symbol) — e.g. "X"
+        # would fire on every X-prefixed token. Two chars is the practical floor.
+        if len(s) < 2:
+            raise ValueError("ticker must be at least 2 characters")
+        return s
 
     @field_validator("aliases")
     @classmethod
