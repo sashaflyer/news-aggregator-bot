@@ -1,14 +1,12 @@
 """Config loader. Validates config.toml structure and types."""
 from __future__ import annotations
 
-import re
 import tomllib
 from pathlib import Path
 from typing import Literal
 
+from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
-
-_CRON_RE = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
 
 # The set of source registry keys understood by the pipeline. Kept in sync
 # with aggregator.pipeline.SOURCES — adding a source means updating both.
@@ -16,8 +14,10 @@ _KNOWN_SOURCES = {"reddit", "polymarket", "hackernews"}
 
 
 def _validate_cron(v: str) -> str:
-    if not _CRON_RE.match(v):
-        raise ValueError(f"not a 5-field cron expression: {v!r}")
+    try:
+        CronTrigger.from_crontab(v)
+    except ValueError as e:
+        raise ValueError(f"invalid cron expression {v!r}: {e}") from e
     return v
 
 
