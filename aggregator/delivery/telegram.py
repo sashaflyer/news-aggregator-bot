@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from aggregator.config import Config
+from aggregator.delivery._html_filter import sanitize_outgoing
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +145,12 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
         log.error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set; skipping send for %s",
                   topic_id)
         return []
+
+    # Whitelist outgoing HTML so a prompt-injected anchor in LLM output can't
+    # smuggle a phishing href through our trusted bot. No-op under non-HTML
+    # parse modes (the LLM output for those should not contain HTML anyway).
+    if cfg.telegram.parse_mode == "HTML":
+        text = sanitize_outgoing(text)
 
     chunks = _chunk(text)
     ids: list[int] = []
