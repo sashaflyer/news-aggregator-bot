@@ -37,7 +37,7 @@ Reddit's mood is cautiously skeptical; Polymarket is pricing in further upside.
 - **systemd-managed** with auto-restart on failure.
 - **HTML-mode Telegram delivery** with a plain-text fallback if the LLM emits malformed markup. The user never sees a silent failure.
 - **Bot command surface** with `/status`, `/digest`, `/topics`, and `/help` in v2 — plus a clear extension pattern (`aggregator/bot/commands/<name>.py` + one entry in the `COMMANDS` list in `app.py`). `/digest <topic_id>` triggers a real run on demand; a per-topic lock prevents it from racing the scheduler.
-- **110 offline tests** covering pipeline, sources, scoring, dedup, synthesis, delivery, and the bot.
+- **187 offline tests** covering pipeline, sources, scoring, dedup, synthesis, delivery, and the bot.
 
 ## Architecture
 
@@ -197,7 +197,7 @@ journalctl -u news-aggregator -f
 pytest -v
 ```
 
-All 110 tests run offline (sources, OpenAI, and Telegram are mocked via `respx` / `unittest.mock`).
+All 187 tests run offline (sources, OpenAI, and Telegram are mocked via `respx` / `unittest.mock`). Source clients use stdlib `urllib.request` wrapped in `asyncio.to_thread`; only `delivery/telegram.py` uses `httpx`.
 
 ## Status
 
@@ -223,7 +223,7 @@ aggregator/
 │   └── commands/            # one file per command: status.py, digest.py, topics.py, help.py
 └── vendor/last30days/       # vendored upstream (MIT)
 deploy/                      # systemd unit + install guide
-tests/                       # 110 offline tests
+tests/                       # 187 offline tests
 ```
 
 ## Attribution
