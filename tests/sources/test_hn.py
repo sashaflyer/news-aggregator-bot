@@ -74,6 +74,19 @@ async def test_to_item_preserves_hn_link_when_no_external_url():
     assert "news.ycombinator.com" in ask_hn.url
 
 
+@pytest.mark.asyncio
+async def test_hn_failure_propagates_to_gather():
+    """A full HN outage must surface as a partial pipeline run, not silent empty."""
+    from unittest.mock import patch
+    from aggregator.sources.hn import _fetch_hn
+    with patch(
+        "aggregator.sources.hn._upstream.search_hackernews",
+        side_effect=RuntimeError("boom"),
+    ):
+        with pytest.raises(RuntimeError):
+            _fetch_hn("bitcoin")
+
+
 def test_parse_created_at_bad_in_hn():
     from aggregator.sources.hn import _parse_created_at
     assert _parse_created_at("not a date") is None

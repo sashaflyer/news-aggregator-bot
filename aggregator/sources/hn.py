@@ -21,18 +21,19 @@ log = logging.getLogger(__name__)
 
 
 def _fetch_hn(query: str, limit: int = 15) -> list[dict[str, Any]]:
-    """Algolia search for the last 24h, normalized into a list of dicts."""
+    """Algolia search for the last 24h, normalized into a list of dicts.
+
+    Lets exceptions propagate; the source-level ``fetch`` runs subqueries
+    under ``asyncio.gather(return_exceptions=True)`` and the pipeline
+    distinguishes 'ok' from 'partial' / 'error' based on those.
+    """
     now = datetime.now(timezone.utc)
     from_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     to_date = now.strftime("%Y-%m-%d")
-    try:
-        response = _upstream.search_hackernews(
-            topic=query, from_date=from_date, to_date=to_date, depth="default"
-        )
-        parsed = _upstream.parse_hackernews_response(response, query=query)
-    except Exception as e:  # noqa: BLE001
-        log.warning("hn search failed for %r: %s", query, e)
-        return []
+    response = _upstream.search_hackernews(
+        topic=query, from_date=from_date, to_date=to_date, depth="default"
+    )
+    parsed = _upstream.parse_hackernews_response(response, query=query)
     return parsed[:limit]
 
 
