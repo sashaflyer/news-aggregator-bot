@@ -44,3 +44,25 @@ async def test_cli_oneshot_runs_pipeline(tmp_path, monkeypatch):
     fake.assert_awaited_once()
     kwargs = fake.await_args.kwargs
     assert kwargs.get("trigger") == "command" or "command" in fake.await_args.args
+
+
+@pytest.mark.asyncio
+async def test_cli_run_once_exits_nonzero_on_error(monkeypatch):
+    from aggregator import __main__ as m
+
+    class _R:
+        run_id = 7
+        status = "error"
+        items_fetched = 0
+        items_delivered = 0
+
+    async def fake_run_digest(*a, **kw):
+        return _R()
+
+    # Avoid touching disk / loading config: stub _bootstrap to return placeholders.
+    monkeypatch.setattr(m, "_bootstrap", lambda config_path: (object(), object()))
+    monkeypatch.setattr(m, "run_digest", fake_run_digest)
+
+    with pytest.raises(SystemExit) as exc:
+        await m.cli_run_once(topic_id="any", config_path="ignored")
+    assert exc.value.code == 1

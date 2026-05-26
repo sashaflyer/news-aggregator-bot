@@ -77,6 +77,8 @@ async def cli_run_once(*, topic_id: str, config_path: str) -> None:
     log.info("one-shot run %s for %s: status=%s items_fetched=%d items_delivered=%d",
              result.run_id, topic_id, result.status,
              result.items_fetched, result.items_delivered)
+    if result.status == "error":
+        sys.exit(1)
 
 
 async def serve(*, config_path: str) -> None:
