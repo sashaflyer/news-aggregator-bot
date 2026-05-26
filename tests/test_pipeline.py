@@ -309,6 +309,30 @@ async def test_run_digest_empty_after_filter_sends_heartbeat(cfg, storage):
 
 
 @pytest.mark.asyncio
+async def test_empty_digest_with_failed_send_records_error(cfg, storage):
+    """A Telegram outage during an otherwise empty digest reports error."""
+    from aggregator import pipeline
+
+    # First, deliver some items so they end up in delivered_findings.
+    items = [make_distinct_item("reddit", i) for i in range(3)]
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": items, "polymarket": []}
+    )), patch.object(pipeline, "synthesize_async", new=AsyncMock(return_value="D1"
+    )), patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[1])):
+        await pipeline.run_digest("crypto_general", cfg, storage, trigger="scheduled")
+
+    # Second run: same items get filtered to empty, send_digest fails.
+    same_items = [make_distinct_item("reddit", i) for i in range(3)]
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": same_items, "polymarket": []}
+    )), patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[])):
+        result = await pipeline.run_digest("crypto_general", cfg, storage,
+                                           trigger="scheduled")
+
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
 async def test_enrich_reddit_items_adds_comments_to_metadata():
     """Verify Reddit items get top_comments+comment_insights in metadata."""
     from unittest.mock import patch

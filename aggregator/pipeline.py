@@ -324,6 +324,12 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
             f"(fetched {fetched}, all previously delivered or filtered)"
         )
         msg_ids = await send_digest(message_text, topic_id=topic_id, cfg=cfg)
+        if not msg_ids:
+            storage.finish_run(run_id, status="error", items_fetched=fetched,
+                               items_delivered=0,
+                               error_message="heartbeat send failed",
+                               at=datetime.now(timezone.utc))
+            return RunResult(run_id, "error", fetched, 0)
         storage.log_digest(run_id=run_id, topic_id=topic_id, message_text=message_text,
                            telegram_message_ids=msg_ids,
                            at=datetime.now(timezone.utc))
