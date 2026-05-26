@@ -82,6 +82,21 @@ def test_parse_created_at_bad_returns_none_not_now():
     assert _parse_created_at("not a date") is None
 
 
+def test_fetch_by_tag_does_not_raise_on_signature():
+    """Regression: _fetch_by_tag must satisfy the vendor's required positional
+    args (from_date, to_date). All other tests mock _fetch_by_tag directly so
+    they wouldn't catch a TypeError at the upstream call site.
+    """
+    from aggregator.sources.polymarket import _fetch_by_tag
+    with patch(
+        "aggregator.sources.polymarket._upstream.search_polymarket",
+        return_value={"events": []},
+    ) as mock:
+        result = _fetch_by_tag("crypto")
+    assert result == []
+    mock.assert_called_once()
+
+
 def test_to_item_reads_volume_from_volume1mo():
     """Vendor exposes volume under volume1mo / volume24hr, not top-level volume."""
     from aggregator.sources.polymarket import _to_item

@@ -28,10 +28,16 @@ def _fetch_by_tag(tag: str, limit: int = 50) -> list[dict[str, Any]]:
     Wraps ``search_polymarket`` using the tag as the topic query. Live behavior
     can be tuned later — tests mock this.
 
-    Note: Gamma's ``public-search`` endpoint ignores ``from_date``/``to_date``,
-    so we don't pass them. Date filtering happens downstream from ``date``.
+    Note: Gamma's ``public-search`` endpoint ignores ``from_date``/``to_date``
+    (audit M9), but the vendor signature still requires them positionally —
+    pass inert placeholders. Date filtering happens downstream from ``date``.
     """
-    response = _upstream.search_polymarket(topic=tag, depth="default")
+    response = _upstream.search_polymarket(
+        topic=tag,
+        from_date="1970-01-01",  # endpoint ignores; signature requires
+        to_date="1970-01-01",
+        depth="default",
+    )
     return (response.get("events") or [])[:limit]
 
 
