@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, filters
 
 from aggregator.bot.commands.digest import handle_digest
 from aggregator.bot.commands.help import handle_help
@@ -35,8 +35,13 @@ def build_application(*, storage, scheduler=None, cfg: Config) -> Application:
     app.bot_data["authorized_chat_id"] = chat_id
     app.bot_data["started_at"] = datetime.now(timezone.utc)
 
+    # Dispatcher-level chat filter: an Update from any other chat never reaches
+    # a handler. Belt-and-braces with is_authorized() inside handlers, but this
+    # makes authz unbypassable if someone adds a new command and forgets the
+    # in-handler check.
+    chat_filter = filters.Chat(chat_id=chat_id)
     for name, _description, handler in COMMANDS:
-        app.add_handler(CommandHandler(name, handler))
+        app.add_handler(CommandHandler(name, handler, filters=chat_filter))
 
     return app
 
