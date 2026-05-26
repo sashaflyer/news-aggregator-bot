@@ -14,6 +14,15 @@ def test_iso_rejects_naive_datetime():
         _iso(datetime(2025, 1, 1))
 
 
+def test_project_schema_version_recorded(tmp_path):
+    from aggregator.storage import Storage, PROJECT_SCHEMA_VERSION
+    s = Storage(str(tmp_path / "test.db"))
+    s.init_schema()
+    with sqlite3.connect(s.path) as conn:
+        v = conn.execute("SELECT version FROM project_schema_version").fetchone()[0]
+    assert v == PROJECT_SCHEMA_VERSION
+
+
 @pytest.fixture
 def storage(tmp_path):
     db = tmp_path / "test.db"

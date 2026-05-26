@@ -67,6 +67,34 @@ def _iso(at: datetime) -> str:
     return at.isoformat()
 
 
+PROJECT_SCHEMA_VERSION = 1
+
+_MIGRATIONS: dict[int, list[str]] = {
+    # v1 is implicit: the contents of _ADDED_SCHEMA. We just record version=1
+    # after init_schema runs for existing or fresh DBs. Migrations 2+ add new
+    # statements applied in version order.
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply pending migrations to bring the DB up to PROJECT_SCHEMA_VERSION."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_schema_version (version INTEGER)"
+    )
+    row = conn.execute("SELECT version FROM project_schema_version").fetchone()
+    current = row[0] if row else 0
+    if current == 0:
+        conn.execute("INSERT INTO project_schema_version VALUES (?)", (1,))
+        current = 1
+    for v in sorted(_MIGRATIONS):
+        if v > current:
+            for stmt in _MIGRATIONS[v]:
+                conn.execute(stmt)
+            conn.execute("UPDATE project_schema_version SET version = ?", (v,))
+            current = v
+    conn.commit()
+
+
 class Storage:
     """Thin SQLite access layer for the aggregator."""
 
@@ -90,6 +118,7 @@ class Storage:
         try:
             conn.executescript(_ADDED_SCHEMA)
             conn.commit()
+            _migrate(conn)
         finally:
             conn.close()
 
