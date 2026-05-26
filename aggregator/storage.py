@@ -63,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_delivered_findings_topic_delivered_at
 
 
 def _iso(at: datetime) -> str:
+    assert at.tzinfo is not None, "datetime passed to _iso must be tz-aware"
     return at.isoformat()
 
 

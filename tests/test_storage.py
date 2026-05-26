@@ -1,11 +1,17 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from aggregator.config import TopicConfig, WatchEntry
 from aggregator.storage import Storage
+
+
+def test_iso_rejects_naive_datetime():
+    from aggregator.storage import _iso
+    with pytest.raises(AssertionError):
+        _iso(datetime(2025, 1, 1))
 
 
 @pytest.fixture
