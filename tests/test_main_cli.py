@@ -1,8 +1,11 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from aggregator.__main__ import _require_env, _require_env_int
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_require_env_missing_var_message(monkeypatch):
@@ -27,7 +30,7 @@ def test_require_env_int_invalid(monkeypatch):
 @pytest.mark.asyncio
 async def test_cli_oneshot_runs_pipeline(tmp_path, monkeypatch):
     cfg_path = tmp_path / "config.toml"
-    cfg_path.write_text(open("config.example.toml", encoding="utf-8").read())
+    cfg_path.write_text((REPO_ROOT / "config.example.toml").read_text(encoding="utf-8"))
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "x")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
