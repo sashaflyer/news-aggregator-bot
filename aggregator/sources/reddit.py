@@ -58,13 +58,27 @@ def _fetch_subreddit(sub: str, limit: int = 25) -> list[dict[str, Any]]:
     for a once-daily digest pulling a handful of subs this is fine.
     """
     capped = max(1, min(int(limit), 100))
-    url = f"https://www.reddit.com/r/{sub}/hot.json?limit={capped}"
+    url = f"https://www.reddit.com/r/{sub}/hot.json?limit={capped}&raw_json=1"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = json.loads(resp.read())
-    except (urllib.error.URLError, json.JSONDecodeError) as e:
-        log.warning("reddit hot fetch failed for r/%s: %s", sub, e)
+    except urllib.error.HTTPError as e:
+        retry_after = ""
+        try:
+            retry_after = e.headers.get("Retry-After", "") if e.headers else ""
+        except AttributeError:
+            retry_after = ""
+        log.warning(
+            "reddit hot fetch failed for r/%s: HTTP %s (retry_after=%r)",
+            sub, e.code, retry_after,
+        )
+        return []
+    except urllib.error.URLError as e:
+        log.warning("reddit hot fetch network error for r/%s: %s", sub, e)
+        return []
+    except json.JSONDecodeError as e:
+        log.warning("reddit hot fetch decode error for r/%s: %s", sub, e)
         return []
 
     posts: list[dict[str, Any]] = []

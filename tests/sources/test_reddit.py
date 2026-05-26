@@ -157,6 +157,47 @@ def test_to_item_uses_reddit_id_when_present():
     assert item.id == "reddit:abc123"
 
 
+def test_fetch_subreddit_429_logs_retry_after_and_returns_empty(caplog):
+    import io
+    import urllib.error
+    from unittest.mock import patch
+
+    from aggregator.sources.reddit import _fetch_subreddit
+
+    err = urllib.error.HTTPError(
+        url="http://x",
+        code=429,
+        msg="x",
+        hdrs={"Retry-After": "12"},
+        fp=io.BytesIO(b""),
+    )
+    with patch("urllib.request.urlopen", side_effect=err):
+        with caplog.at_level("WARNING"):
+            items = _fetch_subreddit("test", limit=5)
+    assert items == []
+    assert any(
+        "429" in rec.message and "retry_after" in rec.message.lower()
+        for rec in caplog.records
+    )
+
+
+def test_fetch_subreddit_5xx_logs_status(caplog):
+    import io
+    import urllib.error
+    from unittest.mock import patch
+
+    from aggregator.sources.reddit import _fetch_subreddit
+
+    err = urllib.error.HTTPError(
+        url="http://x", code=503, msg="x", hdrs={}, fp=io.BytesIO(b"")
+    )
+    with patch("urllib.request.urlopen", side_effect=err):
+        with caplog.at_level("WARNING"):
+            items = _fetch_subreddit("test", limit=5)
+    assert items == []
+    assert any("503" in rec.message for rec in caplog.records)
+
+
 def test_reddit_user_agent_requires_handle(monkeypatch):
     """Without REDDIT_USER_AGENT or REDDIT_OWNER_HANDLE, module import must fail."""
     monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
