@@ -5,10 +5,10 @@ import importlib
 
 
 def test_reddit_public_uses_compliant_user_agent(monkeypatch):
-    # An earlier test (test_main_cli::test_cli_oneshot_runs_pipeline) calls
-    # ``_bootstrap`` which invokes ``load_dotenv()`` and leaks the dev .env's
-    # REDDIT_USER_AGENT into os.environ for the rest of the session. We
-    # explicitly clear it here so the composed-from-handle path runs.
+    # The autouse _snapshot_reddit_env fixture (tests/conftest.py) restores
+    # REDDIT_USER_AGENT after this test, so we don't need to defensively
+    # delenv it here — we just need to clear it for the duration so the
+    # composed-from-handle path runs.
     monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
     monkeypatch.setenv("REDDIT_OWNER_HANDLE", "alice")
     captured: dict[str, str] = {}
