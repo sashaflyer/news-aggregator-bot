@@ -109,6 +109,22 @@ async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                             resp2.status_code, resp2.text[:200])
                 return None
 
+            # 429: Telegram tells us exactly how long to wait via
+            # parameters.retry_after. A fixed exponential backoff can be
+            # shorter than that wait, which just extends the ban.
+            if resp.status_code == 429:
+                try:
+                    retry_after = float(
+                        resp.json().get("parameters", {}).get("retry_after", 0)
+                    )
+                except (ValueError, KeyError, AttributeError):
+                    retry_after = 0
+                delay = retry_after if retry_after > 0 else _BACKOFF_BASE ** attempt
+                log.warning("telegram 429; sleeping %.1fs", delay)
+                if attempt < _RETRIES:
+                    await asyncio.sleep(delay)
+                continue
+
             log.warning("telegram send returned %s: %s", resp.status_code, resp.text[:200])
             if resp.status_code in _NON_RETRIABLE_STATUSES:
                 # Bot blocked, token revoked, or chat gone — retrying with

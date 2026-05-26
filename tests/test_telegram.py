@@ -173,6 +173,37 @@ async def test_chunk_suffix_uses_html_italic_under_html_mode(cfg):
         assert "_(1/" not in first
 
 
+@pytest.mark.asyncio
+async def test_telegram_429_honors_retry_after(cfg, monkeypatch):
+    """On 429, sleep parameters.retry_after seconds before retrying — not the
+    fixed exponential backoff, which could be shorter and extend the ban."""
+    import asyncio as _asyncio
+    from aggregator.delivery import telegram
+
+    slept: list[float] = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr(_asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(telegram.asyncio, "sleep", fake_sleep)
+
+    with respx.mock(base_url="https://api.telegram.org") as mock:
+        mock.post("/botTEST_TOKEN/sendMessage").mock(
+            side_effect=[
+                httpx.Response(429, json={
+                    "ok": False,
+                    "parameters": {"retry_after": 7},
+                    "description": "Too Many Requests",
+                }),
+                httpx.Response(200, json={"ok": True, "result": {"message_id": 1}}),
+            ]
+        )
+        msg_ids = await telegram.send_digest("hello", topic_id="crypto_general", cfg=cfg)
+    assert 7 in slept
+    assert msg_ids == [1]
+
+
 def test_chunk_respects_utf16_budget_with_suffix():
     """Telegram counts UTF-16 code units, not Python chars. Each emoji is
     1 char but 2 code units, so a 2100-char emoji string is 4200 code units
