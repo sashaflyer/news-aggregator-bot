@@ -19,17 +19,21 @@ _REDDIT_OWNER_HANDLE = os.environ.get("REDDIT_OWNER_HANDLE", "").strip()
 
 
 def _default_user_agent() -> str:
-    if not _REDDIT_OWNER_HANDLE:
+    # Normalize: tolerate operators writing 'u/alice' or '/u/alice' or
+    # padded whitespace. Without this we'd compose 'by /u/u/alice'. The
+    # module-level _REDDIT_OWNER_HANDLE already .strip()s, but be explicit
+    # here too in case future refactors remove that.
+    handle = (
+        _REDDIT_OWNER_HANDLE.removeprefix("/u/").removeprefix("u/").strip()
+    )
+    if not handle:
         raise RuntimeError(
             "Reddit requires a contact-bearing User-Agent. "
             "Set REDDIT_USER_AGENT to a fully-formed UA string, or set "
             "REDDIT_OWNER_HANDLE to your reddit username (no leading 'u/') "
             "and we'll compose one."
         )
-    return (
-        f"news-aggregator/0.1 by /u/{_REDDIT_OWNER_HANDLE} "
-        f"(contact via reddit dm)"
-    )
+    return f"news-aggregator/0.1 by /u/{handle} (contact via reddit dm)"
 
 
 USER_AGENT = os.environ.get("REDDIT_USER_AGENT", "").strip() or _default_user_agent()

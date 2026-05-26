@@ -281,6 +281,28 @@ def test_reddit_user_agent_requires_handle(monkeypatch):
         importlib.reload(ua)
 
 
+def test_reddit_user_agent_strips_u_prefix(monkeypatch):
+    """Operators sometimes write 'u/alice'; the composed UA must not double
+    the prefix into '/u/u/alice'."""
+    import importlib
+    import aggregator.sources._ua as ua
+    orig_ua = os.environ.get("REDDIT_USER_AGENT")
+    orig_handle = os.environ.get("REDDIT_OWNER_HANDLE")
+    try:
+        monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
+        monkeypatch.setenv("REDDIT_OWNER_HANDLE", "u/alice")
+        importlib.reload(ua)
+        assert "/u/alice" in ua.USER_AGENT
+        assert "/u/u/alice" not in ua.USER_AGENT
+    finally:
+        if orig_ua is not None:
+            os.environ["REDDIT_USER_AGENT"] = orig_ua
+        else:
+            os.environ.pop("REDDIT_USER_AGENT", None)
+        os.environ["REDDIT_OWNER_HANDLE"] = orig_handle or "test-handle"
+        importlib.reload(ua)
+
+
 def test_reddit_user_agent_from_handle(monkeypatch):
     """REDDIT_OWNER_HANDLE composes a contact-bearing UA without REDDIT_USER_AGENT."""
     import importlib
