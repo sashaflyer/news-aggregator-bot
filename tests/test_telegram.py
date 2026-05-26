@@ -173,6 +173,18 @@ async def test_chunk_suffix_uses_html_italic_under_html_mode(cfg):
         assert "_(1/" not in first
 
 
+def test_chunk_respects_utf16_budget_with_suffix():
+    """Telegram counts UTF-16 code units, not Python chars. Each emoji is
+    1 char but 2 code units, so a 2100-char emoji string is 4200 code units
+    and must split into chunks that each fit under the 4096 hard cap."""
+    from aggregator.delivery.telegram import _chunk
+
+    text = "\U0001F600" * 2100
+    chunks = _chunk(text)
+    for c in chunks:
+        assert len(c.encode("utf-16-le")) // 2 <= 4096
+
+
 @pytest.mark.asyncio
 async def test_normal_5xx_still_retries_after_fix(cfg):
     """Pre-existing 5xx retry behavior must still work alongside the new fallback."""

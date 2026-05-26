@@ -12,7 +12,11 @@ from aggregator.config import Config
 
 log = logging.getLogger(__name__)
 
-_MAX_CHARS = 4000
+# Telegram's 4096 cap counts UTF-16 code units, not Python str chars: a single
+# emoji is 1 char in Python but 2 code units in UTF-16. Budget in UTF-16 so
+# emoji-heavy / surrogate-pair-heavy chunks don't slip past the cap.
+_TG_HARD_LIMIT_UTF16 = 4096
+_SUFFIX_RESERVE = 32  # leaves room for "\n\n<i>(NN/NN)</i>" page counter.
 _RETRIES = 3
 _BACKOFF_BASE = 2.0
 # 4xx responses Telegram won't change its mind on — don't waste retries.
@@ -20,17 +24,31 @@ _BACKOFF_BASE = 2.0
 _NON_RETRIABLE_STATUSES = frozenset({401, 403, 404})
 
 
-def _chunk(text: str, limit: int = _MAX_CHARS) -> list[str]:
-    if len(text) <= limit:
+def _utf16_len(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
+    if _utf16_len(text) <= limit:
         return [text]
     chunks: list[str] = []
     remaining = text
-    while len(remaining) > limit:
-        cut = remaining.rfind("\n\n", 0, limit)
-        if cut == -1:
-            cut = remaining.rfind("\n", 0, limit)
-        if cut == -1:
-            cut = limit
+    while _utf16_len(remaining) > limit:
+        # Binary search the largest prefix that fits the UTF-16 budget.
+        lo, hi = 0, len(remaining)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if _utf16_len(remaining[:mid]) <= limit:
+                lo = mid
+            else:
+                hi = mid - 1
+        cut = lo
+        # Walk back to a sensible boundary if one exists nearby.
+        for sep in ("\n\n", "\n", ". "):
+            idx = remaining.rfind(sep, 0, cut)
+            if idx > 0 and idx > cut - 200:
+                cut = idx + len(sep)
+                break
         chunks.append(remaining[:cut].rstrip())
         remaining = remaining[cut:].lstrip()
     if remaining:
