@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 _CRON_RE = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
 
@@ -22,6 +22,8 @@ def _validate_cron(v: str) -> str:
 
 
 class ScheduleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     timezone: str
 
 
@@ -30,6 +32,8 @@ class WatchEntry(BaseModel):
     shown in the digest; `aliases` are extra strings (full name, variants)
     fed to source searches to widen recall without diluting the prompt.
     """
+    model_config = ConfigDict(extra="forbid")
+
     ticker: str = Field(min_length=1)
     aliases: list[str] = Field(default_factory=list)
 
@@ -41,6 +45,8 @@ class TopicConfig(BaseModel):
     - "general"   -> rank globally, keep top_n.
     - "watchlist" -> per_symbol_top_n * len(watch) cap, requires `watch` entries.
     """
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal["general", "watchlist"]
     sources: list[str] = Field(min_length=1)
     prompt_template: str
@@ -97,26 +103,36 @@ class TopicConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     dedup_window_days: int = Field(ge=1, le=365)
     min_score: float
     per_author_cap: int = Field(ge=1)
 
 
 class SynthConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: str
     max_input_items: int = Field(ge=1, le=500)
     max_output_tokens: int = Field(ge=64, le=8192)
 
 
 class TelegramConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     parse_mode: Literal["MarkdownV2", "Markdown", "HTML"]
 
 
 class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     data_dir: str
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schedule: ScheduleConfig
     scoring: ScoringConfig
     synth: SynthConfig
@@ -127,13 +143,4 @@ class Config(BaseModel):
 
 def load_config(path: str | Path) -> Config:
     raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    topics_raw = raw.get("topics") or {}
-    topics = {tid: TopicConfig(**body) for tid, body in topics_raw.items()}
-    return Config(
-        schedule=ScheduleConfig(**raw["schedule"]),
-        scoring=ScoringConfig(**raw["scoring"]),
-        synth=SynthConfig(**raw["synth"]),
-        telegram=TelegramConfig(**raw["telegram"]),
-        storage=StorageConfig(**raw["storage"]),
-        topics=topics,
-    )
+    return Config.model_validate(raw)
