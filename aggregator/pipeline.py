@@ -16,7 +16,7 @@ from aggregator.sources.reddit import RedditSource
 from aggregator.storage import Storage
 from aggregator.relevance import filter_crypto_watchlist_items
 from aggregator.synth import synthesize_async
-from aggregator.url_norm import canonicalize
+from aggregator.url_norm import dedup_key
 from aggregator.delivery.telegram import send_digest
 from aggregator.vendor.last30days import dedupe as _dedupe
 from aggregator.vendor.last30days import reddit_enrich as _reddit_enrich
@@ -237,7 +237,10 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
     recent_urls = storage.recently_delivered_urls(topic_id=topic_id, since=since)
     if recent_urls:
         before = len(items)
-        items = [it for it in items if canonicalize(it.url) not in recent_urls]
+        items = [
+            it for it in items
+            if dedup_key({"url": it.url, "id": it.id}) not in recent_urls
+        ]
         log.info("filtered %d previously-delivered items; %d remain",
                  before - len(items), len(items))
 

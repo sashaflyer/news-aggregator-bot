@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from aggregator.url_norm import canonicalize
+from aggregator.url_norm import canonicalize, dedup_key
 from aggregator.vendor.last30days import store as upstream_store
 
 if TYPE_CHECKING:
@@ -373,23 +373,22 @@ class Storage:
         at: datetime,
     ) -> int:
         """Record the items just delivered for `topic_id` so future digests can
-        filter them out. Skips items with no URL (we have no stable key for those).
-        Returns the number of rows inserted.
+        filter them out. Items with no URL fall back to ``id:<source-id>`` as a
+        dedup key; items with neither are skipped. Returns rows inserted.
         """
         ts = _iso(at)
         conn = self._connect()
         try:
             n = 0
             for it in items:
-                url = (it.get("url") or "").strip()
-                if not url:
+                key = dedup_key(it)
+                if not key:
                     continue
-                url = canonicalize(url)
                 conn.execute(
                     """INSERT OR IGNORE INTO delivered_findings
                            (topic_id, item_id, url, title, delivered_at)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (topic_id, str(it.get("id", "")), url, it.get("title") or "", ts),
+                    (topic_id, str(it.get("id", "")), key, it.get("title") or "", ts),
                 )
                 n += 1
             conn.commit()

@@ -65,6 +65,16 @@ def test_migration_from_v1_to_v2_adds_unique_index(tmp_path):
     assert idx is not None
 
 
+def test_record_delivered_items_uses_id_when_url_empty(tmp_path):
+    s = Storage(str(tmp_path / "t.db"))
+    s.init_schema()
+    items = [{"url": "", "id": "polymarket:xyz", "title": "t"}]
+    now = datetime.now(timezone.utc)
+    s.record_delivered_items(topic_id="t", items=items, at=now)
+    urls = s.recently_delivered_urls(topic_id="t", since=now - timedelta(seconds=1))
+    assert "id:polymarket:xyz" in urls
+
+
 def test_migration_v3_canonicalizes_urls(tmp_path):
     db = tmp_path / "t.db"
     conn = sqlite3.connect(db)
@@ -199,7 +209,7 @@ def test_record_and_recall_delivered_items(tmp_path):
         items=[
             {"id": "r:1", "url": "https://reddit.com/1", "title": "A"},
             {"id": "r:2", "url": "https://reddit.com/2", "title": "B"},
-            {"id": "r:3", "url": "", "title": "no url"},  # should be skipped
+            {"id": "", "url": "", "title": "no key"},  # no url + no id -> skipped
         ],
         at=now,
     )

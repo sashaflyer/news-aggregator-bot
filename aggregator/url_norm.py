@@ -41,3 +41,19 @@ def canonicalize(url: str) -> str:
     ]
     query = urlencode(keep)
     return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def dedup_key(item: dict) -> str | None:
+    """Return a stable dedup key for `item` — canonical URL when available,
+    otherwise ``id:<source-id>`` so url-less items (e.g. some Polymarket
+    markets) don't bypass cross-run dedup.
+
+    Returns None when the item has neither url nor id.
+    """
+    url = (item.get("url") or "").strip()
+    if url:
+        return canonicalize(url)
+    item_id = (item.get("id") or "").strip()
+    if item_id:
+        return f"id:{item_id}"
+    return None
