@@ -16,6 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from aggregator.bot.app import build_application, publish_commands
+from aggregator.bot.digest_lock import init_locks
 from aggregator.config import load_config
 from aggregator.pipeline import run_digest
 from aggregator.scheduler import build_scheduler
@@ -88,6 +89,7 @@ async def serve(*, config_path: str) -> None:
     _require_env("TELEGRAM_BOT_TOKEN")
     _require_env_int("TELEGRAM_CHAT_ID")
     scheduler = build_scheduler(cfg, storage)
+    init_locks(list(cfg.topics.keys()))
     app = build_application(storage=storage, scheduler=scheduler, cfg=cfg)
 
     stop = asyncio.Event()
