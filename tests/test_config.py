@@ -173,6 +173,24 @@ def test_topic_config_rejects_nonsense_cron():
     assert "schedule" in str(exc.value).lower() or "cron" in str(exc.value).lower()
 
 
+def test_watch_entry_rejects_whitespace_ticker():
+    from aggregator.config import WatchEntry
+    with pytest.raises(ValidationError):
+        WatchEntry(ticker="   ")
+
+
+def test_topic_strips_and_rejects_empty_list_items():
+    with pytest.raises(ValidationError):
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            subreddits=["", "  "],
+            prompt_template="general_crypto.md",
+            top_n=5,
+            schedule="0 8 * * *",
+        )
+
+
 def test_top_level_config_rejects_unknown_section(tmp_path):
     toml = tmp_path / "config.toml"
     toml.write_text("""

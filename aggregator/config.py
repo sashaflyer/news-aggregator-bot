@@ -21,6 +21,23 @@ def _validate_cron(v: str) -> str:
     return v
 
 
+def _strip_nonempty_str(v: str) -> str:
+    s = (v or "").strip()
+    if not s:
+        raise ValueError("must be a non-empty, non-whitespace string")
+    return s
+
+
+def _strip_nonempty_list(v: list[str]) -> list[str]:
+    out = []
+    for item in v:
+        s = (item or "").strip()
+        if not s:
+            raise ValueError("list items must be non-empty after stripping whitespace")
+        out.append(s)
+    return out
+
+
 class ScheduleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -34,8 +51,18 @@ class WatchEntry(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
-    ticker: str = Field(min_length=1)
+    ticker: str
     aliases: list[str] = Field(default_factory=list)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _strip_nonempty_str(v)
+
+    @field_validator("aliases")
+    @classmethod
+    def _v_aliases(cls, v: list[str]) -> list[str]:
+        return _strip_nonempty_list(v)
 
 
 class TopicConfig(BaseModel):
@@ -73,6 +100,11 @@ class TopicConfig(BaseModel):
                 f"unknown source(s) {unknown!r}; known: {sorted(_KNOWN_SOURCES)}"
             )
         return v
+
+    @field_validator("subreddits", "polymarket_tags", "hn_keywords")
+    @classmethod
+    def _v_string_lists(cls, v: list[str]) -> list[str]:
+        return _strip_nonempty_list(v)
 
     @model_validator(mode="after")
     def _v_kind_requirements(self) -> "TopicConfig":
