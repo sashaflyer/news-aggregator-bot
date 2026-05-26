@@ -46,6 +46,15 @@ To reproduce this exact vendor: `python scripts/vendor_last30days.py 1e03af19e0a
   left in place as harmless no-ops to minimize the patch surface.
 - No other logic changes.
 
+## Local patches
+
+- `reddit_public.py`: removed the hardcoded Chrome `USER_AGENT` constant and
+  now imports `USER_AGENT` from `aggregator.sources._ua`. This unifies the
+  Reddit User-Agent across both the hot-listing path (`sources/reddit.py`)
+  and the public-search path here, so Reddit's rate-limit budget and any
+  UA-based throttling apply against a single, contact-bearing identity.
+  Refs audit finding H4.
+
 ## Deviations from initial vendor spec
 
 - `store.py` does not exist at `skills/last30days/scripts/lib/` (404). It lives at

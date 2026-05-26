@@ -262,13 +262,13 @@ def test_reddit_user_agent_requires_handle(monkeypatch):
     monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
     monkeypatch.delenv("REDDIT_OWNER_HANDLE", raising=False)
     import importlib
-    import aggregator.sources.reddit as r
+    import aggregator.sources._ua as ua
     try:
         with pytest.raises(RuntimeError, match="REDDIT_USER_AGENT"):
-            importlib.reload(r)
+            importlib.reload(ua)
     finally:
         monkeypatch.setenv("REDDIT_OWNER_HANDLE", "test-handle")
-        importlib.reload(r)
+        importlib.reload(ua)
 
 
 def test_reddit_user_agent_from_handle(monkeypatch):
@@ -276,10 +276,10 @@ def test_reddit_user_agent_from_handle(monkeypatch):
     monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
     monkeypatch.setenv("REDDIT_OWNER_HANDLE", "alice")
     import importlib
-    import aggregator.sources.reddit as r
+    import aggregator.sources._ua as ua
     try:
-        importlib.reload(r)
-        assert "/u/alice" in r.USER_AGENT
+        importlib.reload(ua)
+        assert "/u/alice" in ua.USER_AGENT
     finally:
         monkeypatch.setenv("REDDIT_OWNER_HANDLE", "test-handle")
-        importlib.reload(r)
+        importlib.reload(ua)

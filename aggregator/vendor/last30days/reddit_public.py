@@ -21,12 +21,11 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Any, Dict, List, Optional
 
-
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
+# Local patch: the upstream vendor file shipped a Chrome UA spoof. We unify
+# with the operator-configured contact-bearing UA so both the hot-listing
+# path and the search path share one rate-limit budget identity.
+# See ``aggregator/vendor/last30days/UPSTREAM.md`` for the patch note.
+from aggregator.sources._ua import USER_AGENT
 
 # Depth-aware limits for thread counts
 DEPTH_LIMITS = {
