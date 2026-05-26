@@ -36,30 +36,35 @@ def _fetch_hn(query: str, limit: int = 15) -> list[dict[str, Any]]:
     return parsed[:limit]
 
 
-def _parse_created_at(raw: dict[str, Any]) -> datetime:
-    """Vendor emits a YYYY-MM-DD ``date`` string (derived from Algolia's
-    created_at_i). Fall back to now() if missing/malformed.
+def _parse_created_at(s: str | None) -> datetime | None:
+    """Parse a vendor ``date`` string (YYYY-MM-DD or ISO 8601) into UTC.
+
+    Returns ``None`` for missing or unparseable input — callers must drop
+    such items rather than backfilling ``now()`` (audit M9).
     """
-    date_str = raw.get("date")
-    if date_str:
-        try:
-            dt = datetime.fromisoformat(str(date_str))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except ValueError:
-            pass
-    return datetime.now(timezone.utc)
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(s))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
-def _to_item(raw: dict[str, Any]) -> Item:
-    """Map an upstream HN dict to our Item.
+def _to_item(raw: dict[str, Any]) -> Item | None:
+    """Map an upstream HN dict to our Item, or ``None`` if date is unparseable.
 
     Vendor ``parse_hackernews_response`` output shape:
         {"id": "<objectID>", "title": ..., "url": ..., "hn_url": ...,
          "author": ..., "date": "YYYY-MM-DD",
          "engagement": {"points": int, "comments": int}, ...}
     """
+    created_at = _parse_created_at(raw.get("date"))
+    if created_at is None:
+        return None
+
     native_id = str(raw.get("id") or raw.get("hn_url", ""))
     url = str(raw.get("url") or raw.get("hn_url") or "")
     eng = raw.get("engagement") or {}
@@ -71,7 +76,7 @@ def _to_item(raw: dict[str, Any]) -> Item:
         title=str(raw.get("title") or "").strip(),
         url=url,
         text="",  # vendor doesn't surface story_text/text
-        created_at=_parse_created_at(raw),
+        created_at=created_at,
         engagement_raw={
             "points": points,
             "score": points,    # aliased so engagement-sum sort picks it up
@@ -106,5 +111,8 @@ class HnSource(Source):
             if isinstance(raws, Exception):
                 log.warning("hn subquery failed: %s", raws)
                 continue
-            items.extend(_to_item(r) for r in raws)
+            for r in raws:
+                it = _to_item(r)
+                if it is not None:
+                    items.append(it)
         return items

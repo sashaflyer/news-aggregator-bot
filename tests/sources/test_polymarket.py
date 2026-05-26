@@ -77,6 +77,11 @@ async def test_symbol_filter_word_boundary_not_substring():
     assert items == []
 
 
+def test_parse_created_at_bad_returns_none_not_now():
+    from aggregator.sources.polymarket import _parse_created_at
+    assert _parse_created_at("not a date") is None
+
+
 def test_to_item_reads_volume_from_volume1mo():
     """Vendor exposes volume under volume1mo / volume24hr, not top-level volume."""
     from aggregator.sources.polymarket import _to_item

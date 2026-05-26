@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from aggregator.sources.base import Item, Source
@@ -27,36 +27,41 @@ def _fetch_by_tag(tag: str, limit: int = 50) -> list[dict[str, Any]]:
 
     Wraps ``search_polymarket`` using the tag as the topic query. Live behavior
     can be tuned later — tests mock this.
+
+    Note: Gamma's ``public-search`` endpoint ignores ``from_date``/``to_date``,
+    so we don't pass them. Date filtering happens downstream from ``date``.
     """
-    now = datetime.now(timezone.utc)
-    from_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-    to_date = now.strftime("%Y-%m-%d")
-    response = _upstream.search_polymarket(
-        topic=tag, from_date=from_date, to_date=to_date, depth="default"
-    )
+    response = _upstream.search_polymarket(topic=tag, depth="default")
     return (response.get("events") or [])[:limit]
 
 
-def _parse_created_at(raw: dict[str, Any]) -> datetime:
-    """Use vendor's ``date`` (derived from event.updatedAt). Fall back to now().
+def _parse_created_at(s: str | None) -> datetime | None:
+    """Parse a vendor ``date`` string (YYYY-MM-DD or ISO 8601) into UTC.
+
+    Returns ``None`` for missing or unparseable input — callers must drop
+    such items rather than backfilling ``now()`` (which would falsely
+    resurface stale items as fresh; audit M9).
 
     Note: ``end_date`` is the market resolution date — usually in the future —
     so it must NOT be used as the item's creation timestamp.
     """
-    date_str = raw.get("date")
-    if date_str:
-        try:
-            dt = datetime.fromisoformat(str(date_str))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except ValueError:
-            pass
-    return datetime.now(timezone.utc)
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(s))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
-def _to_item(raw: dict[str, Any]) -> Item:
+def _to_item(raw: dict[str, Any]) -> Item | None:
     """Map an upstream Polymarket event dict to our Item.
+
+    Returns ``None`` when the upstream dict has no parseable date — Item's
+    ``created_at`` is required and a now() fallback would make stale markets
+    look fresh.
 
     Vendor ``parse_polymarket_response`` output shape:
         {"event_id", "title", "question", "url", "outcome_prices",
@@ -64,6 +69,10 @@ def _to_item(raw: dict[str, Any]) -> Item:
     Legacy/test-fixture keys (``id``, ``slug``, ``volume``, ``outcomes``,
     ``description``) are still tolerated as fallbacks.
     """
+    created_at = _parse_created_at(raw.get("date"))
+    if created_at is None:
+        return None
+
     raw_id = str(raw.get("event_id") or raw.get("id") or raw.get("slug") or raw.get("url", ""))
     title = str(raw.get("title") or raw.get("question") or "").strip()
     text = str(raw.get("description") or raw.get("question") or "")
@@ -87,7 +96,7 @@ def _to_item(raw: dict[str, Any]) -> Item:
         title=title,
         url=url,
         text=text,
-        created_at=_parse_created_at(raw),
+        created_at=created_at,
         engagement_raw={
             "volume": volume,
             "volume24hr": raw.get("volume24hr"),
@@ -142,7 +151,10 @@ class PolymarketSource(Source):
             if isinstance(raws, Exception):
                 log.warning("polymarket subquery failed: %s", raws)
                 continue
-            items.extend(_to_item(r) for r in raws)
+            for r in raws:
+                it = _to_item(r)
+                if it is not None:
+                    items.append(it)
 
         if symbols:
             items = [it for it in items if _matches_any_symbol(it, symbols)]

@@ -74,6 +74,11 @@ async def test_to_item_preserves_hn_link_when_no_external_url():
     assert "news.ycombinator.com" in ask_hn.url
 
 
+def test_parse_created_at_bad_in_hn():
+    from aggregator.sources.hn import _parse_created_at
+    assert _parse_created_at("not a date") is None
+
+
 @pytest.mark.asyncio
 async def test_to_item_parses_date_into_aware_datetime():
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
