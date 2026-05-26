@@ -1,6 +1,7 @@
 """Config loader. Validates config.toml structure and types."""
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -11,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 # The set of source registry keys understood by the pipeline. Kept in sync
 # with aggregator.pipeline.SOURCES — adding a source means updating both.
 _KNOWN_SOURCES = {"reddit", "polymarket", "hackernews"}
+
+# Prompt template filenames are constrained to a safe character class so a
+# config writer cannot escape PROMPTS_DIR via path-traversal sequences.
+_PROMPT_FILE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.md$")
 
 
 def _validate_cron(v: str) -> str:
@@ -96,6 +101,15 @@ class TopicConfig(BaseModel):
     @classmethod
     def _v_schedule(cls, v: str) -> str:
         return _validate_cron(v)
+
+    @field_validator("prompt_template")
+    @classmethod
+    def _v_prompt_template(cls, v: str) -> str:
+        if not _PROMPT_FILE_RE.fullmatch(v):
+            raise ValueError(
+                f"prompt_template must match {_PROMPT_FILE_RE.pattern}; got {v!r}"
+            )
+        return v
 
     @field_validator("sources")
     @classmethod

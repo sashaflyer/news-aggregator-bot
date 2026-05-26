@@ -197,6 +197,18 @@ def test_topic_strips_and_rejects_empty_list_items():
         )
 
 
+def test_topic_config_rejects_path_in_prompt_template():
+    with pytest.raises(ValidationError):
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            subreddits=["x"],
+            prompt_template="../etc/passwd",
+            top_n=5,
+            schedule="0 8 * * *",
+        )
+
+
 def test_top_level_config_rejects_unknown_section(tmp_path):
     toml = tmp_path / "config.toml"
     toml.write_text("""
