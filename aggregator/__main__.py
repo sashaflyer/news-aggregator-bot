@@ -10,17 +10,37 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from aggregator.bot.app import build_application, publish_commands
+from aggregator.bot.digest_lock import init_locks
 from aggregator.config import load_config
 from aggregator.pipeline import run_digest
 from aggregator.scheduler import build_scheduler
 from aggregator.storage import Storage
 
 log = logging.getLogger(__name__)
+
+
+def _require_env(name: str) -> str:
+    val = os.environ.get(name)
+    if not val:
+        sys.exit(
+            f"missing required environment variable {name}; "
+            f"see .env.example"
+        )
+    return val
+
+
+def _require_env_int(name: str) -> int:
+    raw = _require_env(name)
+    try:
+        return int(raw)
+    except ValueError:
+        sys.exit(f"environment variable {name} must be an integer; got {raw!r}")
 
 
 def _setup_logging() -> None:
@@ -58,12 +78,18 @@ async def cli_run_once(*, topic_id: str, config_path: str) -> None:
     log.info("one-shot run %s for %s: status=%s items_fetched=%d items_delivered=%d",
              result.run_id, topic_id, result.status,
              result.items_fetched, result.items_delivered)
+    if result.status == "error":
+        sys.exit(1)
 
 
 async def serve(*, config_path: str) -> None:
     _setup_logging()
     cfg, storage = _bootstrap(config_path)
+    _require_env("OPENAI_API_KEY")
+    _require_env("TELEGRAM_BOT_TOKEN")
+    _require_env_int("TELEGRAM_CHAT_ID")
     scheduler = build_scheduler(cfg, storage)
+    init_locks(list(cfg.topics.keys()))
     app = build_application(storage=storage, scheduler=scheduler, cfg=cfg)
 
     stop = asyncio.Event()

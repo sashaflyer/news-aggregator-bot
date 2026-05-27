@@ -29,6 +29,13 @@ sudo -u news-bot $EDITOR /opt/news-aggregator/config.toml
 sudo -u news-bot $EDITOR /opt/news-aggregator/.env
 ```
 
+Restrict permissions on `.env` — it holds the Telegram bot token and OpenAI API key:
+
+```bash
+sudo chmod 600 /opt/news-aggregator/.env
+sudo chown news-bot:news-bot /opt/news-aggregator/.env
+```
+
 ## 4. Install systemd unit
 
 ```bash

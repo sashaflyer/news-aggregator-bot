@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from aggregator.url_norm import canonicalize, dedup_key
 from aggregator.vendor.last30days import store as upstream_store
 
 if TYPE_CHECKING:
@@ -63,7 +64,73 @@ CREATE INDEX IF NOT EXISTS idx_delivered_findings_topic_delivered_at
 
 
 def _iso(at: datetime) -> str:
+    assert at.tzinfo is not None, "datetime passed to _iso must be tz-aware"
     return at.isoformat()
+
+
+PROJECT_SCHEMA_VERSION = 3
+
+_MIGRATIONS: dict[int, list[str]] = {
+    # v1 is implicit: the contents of _ADDED_SCHEMA. We just record version=1
+    # after init_schema runs for existing or fresh DBs. Migrations 2+ add new
+    # statements applied in version order.
+    2: [
+        # Dedupe before adding UNIQUE: keep the earliest row per (topic_id, url).
+        "DELETE FROM delivered_findings WHERE id NOT IN ("
+        " SELECT MIN(id) FROM delivered_findings GROUP BY topic_id, url"
+        ")",
+        "DROP INDEX IF EXISTS idx_delivered_findings_topic_url",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_delivered_findings_topic_url "
+        "ON delivered_findings(topic_id, url)",
+    ],
+    # v3 is handled in Python by _migrate() (canonicalize existing urls).
+    3: [],
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply pending migrations to bring the DB up to PROJECT_SCHEMA_VERSION."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_schema_version (version INTEGER)"
+    )
+    row = conn.execute("SELECT version FROM project_schema_version").fetchone()
+    current = row[0] if row else 0
+    if current == 0:
+        conn.execute("INSERT INTO project_schema_version VALUES (?)", (1,))
+        current = 1
+    for v in sorted(_MIGRATIONS):
+        if v > current:
+            for stmt in _MIGRATIONS[v]:
+                conn.execute(stmt)
+            if v == 3:
+                # Backfill: canonicalize existing URLs in place. UNIQUE index
+                # may collide if two rows canonicalize to the same value;
+                # INSERT OR IGNORE pattern doesn't apply to UPDATE, so we
+                # collapse duplicates manually.
+                rows = conn.execute(
+                    "SELECT id, topic_id, url FROM delivered_findings"
+                ).fetchall()
+                seen: dict[tuple[str, str], int] = {}
+                for row_id, topic_id, url in rows:
+                    new = canonicalize(url)
+                    key = (topic_id, new)
+                    if key in seen:
+                        # Another row already holds the canonical form here;
+                        # drop this duplicate to keep the UNIQUE index happy.
+                        conn.execute(
+                            "DELETE FROM delivered_findings WHERE id=?",
+                            (row_id,),
+                        )
+                        continue
+                    seen[key] = row_id
+                    if new != url:
+                        conn.execute(
+                            "UPDATE delivered_findings SET url=? WHERE id=?",
+                            (new, row_id),
+                        )
+            conn.execute("UPDATE project_schema_version SET version = ?", (v,))
+            current = v
+    conn.commit()
 
 
 class Storage:
@@ -89,6 +156,7 @@ class Storage:
         try:
             conn.executescript(_ADDED_SCHEMA)
             conn.commit()
+            _migrate(conn)
         finally:
             conn.close()
 
@@ -305,22 +373,22 @@ class Storage:
         at: datetime,
     ) -> int:
         """Record the items just delivered for `topic_id` so future digests can
-        filter them out. Skips items with no URL (we have no stable key for those).
-        Returns the number of rows inserted.
+        filter them out. Items with no URL fall back to ``id:<source-id>`` as a
+        dedup key; items with neither are skipped. Returns rows inserted.
         """
         ts = _iso(at)
         conn = self._connect()
         try:
             n = 0
             for it in items:
-                url = (it.get("url") or "").strip()
-                if not url:
+                key = dedup_key(it)
+                if not key:
                     continue
                 conn.execute(
-                    """INSERT INTO delivered_findings
+                    """INSERT OR IGNORE INTO delivered_findings
                            (topic_id, item_id, url, title, delivered_at)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (topic_id, str(it.get("id", "")), url, it.get("title") or "", ts),
+                    (topic_id, str(it.get("id", "")), key, it.get("title") or "", ts),
                 )
                 n += 1
             conn.commit()

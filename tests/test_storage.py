@@ -1,11 +1,106 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from aggregator.config import TopicConfig, WatchEntry
 from aggregator.storage import Storage
+
+
+def test_iso_rejects_naive_datetime():
+    from aggregator.storage import _iso
+    with pytest.raises(AssertionError):
+        _iso(datetime(2025, 1, 1))
+
+
+def test_project_schema_version_recorded(tmp_path):
+    from aggregator.storage import Storage, PROJECT_SCHEMA_VERSION
+    s = Storage(str(tmp_path / "test.db"))
+    s.init_schema()
+    with sqlite3.connect(s.path) as conn:
+        v = conn.execute("SELECT version FROM project_schema_version").fetchone()[0]
+    assert v == PROJECT_SCHEMA_VERSION
+
+
+def test_record_delivered_items_is_idempotent(tmp_path):
+    s = Storage(str(tmp_path / "test.db"))
+    s.init_schema()
+    items = [{"url": "https://x/a", "title": "t", "id": "x:1"}]
+    now = datetime.now(timezone.utc)
+    s.record_delivered_items(topic_id="t1", items=items, at=now)
+    s.record_delivered_items(topic_id="t1", items=items, at=now)
+    urls = s.recently_delivered_urls(topic_id="t1", since=now - timedelta(seconds=1))
+    assert urls == {"https://x/a"}
+    with sqlite3.connect(s.path) as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM delivered_findings WHERE topic_id=?", ("t1",)
+        ).fetchone()[0]
+    assert n == 1
+
+
+def test_migration_from_v1_to_v2_adds_unique_index(tmp_path):
+    db = tmp_path / "t.db"
+    # Seed a v1 DB: project_schema_version=1, no unique index
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE project_schema_version (version INTEGER);
+        INSERT INTO project_schema_version VALUES (1);
+        CREATE TABLE delivered_findings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic_id TEXT NOT NULL, item_id TEXT NOT NULL,
+            url TEXT NOT NULL, title TEXT,
+            delivered_at TIMESTAMP NOT NULL
+        );
+    """)
+    conn.commit()
+    conn.close()
+    s = Storage(str(db))
+    s.init_schema()
+    with sqlite3.connect(s.path) as conn:
+        idx = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='uq_delivered_findings_topic_url'"
+        ).fetchone()
+    assert idx is not None
+
+
+def test_record_delivered_items_uses_id_when_url_empty(tmp_path):
+    s = Storage(str(tmp_path / "t.db"))
+    s.init_schema()
+    items = [{"url": "", "id": "polymarket:xyz", "title": "t"}]
+    now = datetime.now(timezone.utc)
+    s.record_delivered_items(topic_id="t", items=items, at=now)
+    urls = s.recently_delivered_urls(topic_id="t", since=now - timedelta(seconds=1))
+    assert "id:polymarket:xyz" in urls
+
+
+def test_migration_v3_canonicalizes_urls(tmp_path):
+    db = tmp_path / "t.db"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE project_schema_version (version INTEGER);
+        INSERT INTO project_schema_version VALUES (2);
+        CREATE TABLE delivered_findings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic_id TEXT NOT NULL, item_id TEXT NOT NULL,
+            url TEXT NOT NULL, title TEXT,
+            delivered_at TIMESTAMP NOT NULL
+        );
+        CREATE UNIQUE INDEX uq_delivered_findings_topic_url
+            ON delivered_findings(topic_id, url);
+        INSERT INTO delivered_findings
+            (topic_id, item_id, url, title, delivered_at)
+            VALUES ('t', 'x', 'https://X.example/a/?utm_source=z', 't',
+                    '2025-01-01T00:00:00+00:00');
+    """)
+    conn.commit()
+    conn.close()
+    s = Storage(str(db))
+    s.init_schema()
+    with sqlite3.connect(s.path) as conn:
+        url = conn.execute("SELECT url FROM delivered_findings").fetchone()[0]
+    assert url == "https://x.example/a"
 
 
 @pytest.fixture
@@ -114,7 +209,7 @@ def test_record_and_recall_delivered_items(tmp_path):
         items=[
             {"id": "r:1", "url": "https://reddit.com/1", "title": "A"},
             {"id": "r:2", "url": "https://reddit.com/2", "title": "B"},
-            {"id": "r:3", "url": "", "title": "no url"},  # should be skipped
+            {"id": "", "url": "", "title": "no key"},  # no url + no id -> skipped
         ],
         at=now,
     )
@@ -124,7 +219,8 @@ def test_record_and_recall_delivered_items(tmp_path):
         topic_id="crypto_general",
         since=now - timedelta(hours=1),
     )
-    assert urls == {"https://reddit.com/1", "https://reddit.com/2"}
+    # reddit.com is canonicalized to www.reddit.com.
+    assert urls == {"https://www.reddit.com/1", "https://www.reddit.com/2"}
 
 
 def test_recently_delivered_urls_filters_by_topic(tmp_path):
@@ -145,12 +241,13 @@ def test_recently_delivered_urls_filters_by_topic(tmp_path):
         at=now,
     )
 
+    # URLs come back canonicalized (path '' -> '/').
     assert s.recently_delivered_urls(
         topic_id="crypto_general", since=now - timedelta(hours=1)
-    ) == {"https://a.com"}
+    ) == {"https://a.com/"}
     assert s.recently_delivered_urls(
         topic_id="crypto_watchlist", since=now - timedelta(hours=1)
-    ) == {"https://b.com"}
+    ) == {"https://b.com/"}
 
 
 def test_recently_delivered_urls_filters_by_time(tmp_path):
@@ -174,7 +271,7 @@ def test_recently_delivered_urls_filters_by_time(tmp_path):
     recent = s.recently_delivered_urls(
         topic_id="crypto_general", since=now - timedelta(days=7)
     )
-    assert recent == {"https://new.com"}
+    assert recent == {"https://new.com/"}
 
 
 def test_prune_delivered_findings_deletes_old_rows(tmp_path):
@@ -197,8 +294,8 @@ def test_prune_delivered_findings_deletes_old_rows(tmp_path):
     )
     deleted = s.prune_delivered_findings(older_than=now - timedelta(days=7))
     assert deleted == 1
-    # The "new" row survives.
+    # The "new" row survives (path '' canonicalizes to '/').
     remaining = s.recently_delivered_urls(
         topic_id="t1", since=now - timedelta(days=365)
     )
-    assert remaining == {"https://new.com"}
+    assert remaining == {"https://new.com/"}

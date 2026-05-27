@@ -2,8 +2,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from aggregator.config import Config, load_config
+from aggregator.config import Config, TopicConfig, load_config
 
 
 _BASE_SECTIONS = """
@@ -144,3 +145,96 @@ schedule = "not a cron"
 """)
     with pytest.raises(ValueError):
         load_config(cfg_path)
+
+
+def test_topic_config_rejects_unknown_field():
+    with pytest.raises(ValidationError) as exc:
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            sbreddits=["typo"],  # intentional misspelling
+            prompt_template="general_crypto.md",
+            top_n=15,
+            schedule="0 8 * * *",
+        )
+    assert "sbreddits" in str(exc.value).lower() or "extra" in str(exc.value).lower()
+
+
+def test_topic_config_rejects_nonsense_cron():
+    with pytest.raises(ValidationError) as exc:
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            subreddits=["x"],
+            prompt_template="general_crypto.md",
+            top_n=5,
+            schedule="99 99 99 99 99",
+        )
+    assert "schedule" in str(exc.value).lower() or "cron" in str(exc.value).lower()
+
+
+def test_watch_entry_rejects_whitespace_ticker():
+    from aggregator.config import WatchEntry
+    with pytest.raises(ValidationError):
+        WatchEntry(ticker="   ")
+
+
+def test_watch_entry_rejects_single_char_ticker():
+    from aggregator.config import WatchEntry
+    with pytest.raises(ValidationError):
+        WatchEntry(ticker="X")
+
+
+def test_topic_strips_and_rejects_empty_list_items():
+    with pytest.raises(ValidationError):
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            subreddits=["", "  "],
+            prompt_template="general_crypto.md",
+            top_n=5,
+            schedule="0 8 * * *",
+        )
+
+
+def test_topic_config_rejects_path_in_prompt_template():
+    with pytest.raises(ValidationError):
+        TopicConfig(
+            kind="general",
+            sources=["reddit"],
+            subreddits=["x"],
+            prompt_template="../etc/passwd",
+            top_n=5,
+            schedule="0 8 * * *",
+        )
+
+
+def test_top_level_config_rejects_unknown_section(tmp_path):
+    toml = tmp_path / "config.toml"
+    toml.write_text("""
+[schedule]
+timezone = "UTC"
+[scoring]
+dedup_window_days = 7
+min_score = 0.0
+per_author_cap = 3
+[synth]
+model = "gpt-test"
+max_input_items = 10
+max_output_tokens = 100
+[telegram]
+parse_mode = "HTML"
+[storage]
+data_dir = "./data"
+[topics.t1]
+kind = "general"
+sources = ["reddit"]
+subreddits = ["x"]
+prompt_template = "general_crypto.md"
+top_n = 5
+schedule = "0 8 * * *"
+[bogus]
+key = "value"
+""")
+    with pytest.raises(ValidationError):
+        load_config(toml)

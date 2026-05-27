@@ -99,6 +99,27 @@ async def test_run_digest_all_sources_fail(cfg, storage):
     assert storage.get_source_health("polymarket")["consecutive_failures"] == 1
 
 
+@pytest.mark.asyncio
+async def test_all_sources_fail_sends_failure_heartbeat(cfg, storage):
+    from aggregator import pipeline
+
+    async def fake_fetch_all(*a, **kw):
+        return {"reddit": RuntimeError("boom"),
+                "polymarket": RuntimeError("boom2")}
+
+    fake_send = AsyncMock(return_value=[1])
+    with patch.object(pipeline, "_fetch_all", side_effect=fake_fetch_all
+    ), patch.object(pipeline, "send_digest", new=fake_send):
+        result = await pipeline.run_digest("crypto_general", cfg, storage,
+                                           trigger="scheduled")
+
+    assert result.status == "error"
+    fake_send.assert_awaited_once()
+    sent_text = fake_send.await_args.args[0]
+    assert "all sources failed" in sent_text.lower()
+    assert "crypto_general" in sent_text
+
+
 def test_score_and_dedup_removes_near_duplicates():
     from aggregator import pipeline
     from datetime import datetime, timezone
@@ -134,6 +155,39 @@ def test_score_and_dedup_removes_near_duplicates():
 def test_score_and_dedup_handles_empty():
     from aggregator import pipeline
     assert pipeline._score_and_dedup([], top_n=10, per_author_cap=3) == []
+
+
+def test_cap_per_symbol_enforces_per_ticker_limit():
+    from aggregator import pipeline
+    now = datetime.now(timezone.utc)
+    def _mk(title, id):
+        return Item(id=id, source="reddit", title=title, url=f"https://x/{id}",
+                    text="", created_at=now, engagement_raw={}, metadata={})
+    items = [_mk(f"SOL news {i}", f"a{i}") for i in range(30)] + \
+            [_mk("AVAX rises", "b1")]
+    out = pipeline._cap_per_symbol(items, symbols=["SOL", "SUI", "AVAX"], per_symbol_top_n=5)
+    sol = [it for it in out if "SOL" in it.title]
+    avax = [it for it in out if "AVAX" in it.title]
+    assert len(sol) == 5
+    assert len(avax) == 1
+
+
+def test_dedupe_keeps_higher_engagement_variant():
+    """When two near-duplicates exist, the higher-engagement one wins the slot."""
+    from aggregator import pipeline
+    items = [
+        Item(id="a", source="reddit", title="Bitcoin closed above 200k",
+             url="https://a", text="", created_at=datetime.now(timezone.utc),
+             engagement_raw={"score": 5, "upvotes": 5, "comments": 0},
+             metadata={}),
+        Item(id="b", source="reddit", title="Bitcoin closed above 200k!",
+             url="https://b", text="", created_at=datetime.now(timezone.utc),
+             engagement_raw={"score": 5000, "upvotes": 5000, "comments": 0},
+             metadata={}),
+    ]
+    out = pipeline._score_and_dedup(items, top_n=10, per_author_cap=0)
+    assert len(out) == 1
+    assert out[0].id == "b"
 
 
 # Truly different headlines/bodies (no overlap) to bypass Jaccard near-dup
@@ -255,6 +309,68 @@ async def test_run_digest_empty_after_filter_sends_heartbeat(cfg, storage):
 
 
 @pytest.mark.asyncio
+async def test_empty_digest_with_failed_send_records_error(cfg, storage):
+    """A Telegram outage during an otherwise empty digest reports error."""
+    from aggregator import pipeline
+
+    # First, deliver some items so they end up in delivered_findings.
+    items = [make_distinct_item("reddit", i) for i in range(3)]
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": items, "polymarket": []}
+    )), patch.object(pipeline, "synthesize_async", new=AsyncMock(return_value="D1"
+    )), patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[1])):
+        await pipeline.run_digest("crypto_general", cfg, storage, trigger="scheduled")
+
+    # Second run: same items get filtered to empty, send_digest fails.
+    same_items = [make_distinct_item("reddit", i) for i in range(3)]
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": same_items, "polymarket": []}
+    )), patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[])):
+        result = await pipeline.run_digest("crypto_general", cfg, storage,
+                                           trigger="scheduled")
+
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_html_escapes_topic_id(cfg, storage):
+    """The heartbeat path html-escapes topic_id so '<weird>' becomes safe."""
+    from aggregator import pipeline
+    from aggregator.config import TopicConfig
+
+    weird_id = "<weird>"
+    cfg.topics[weird_id] = TopicConfig(
+        kind="general",
+        sources=["reddit"],
+        subreddits=["test"],
+        polymarket_tags=[],
+        prompt_template="general_crypto.md",
+        top_n=5,
+        schedule="0 8 * * *",
+    )
+
+    # First run delivers an item so the second run sees it as "previously delivered".
+    item = make_distinct_item("reddit", 0)
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": [item]}
+    )), patch.object(pipeline, "synthesize_async", new=AsyncMock(return_value="D1"
+    )), patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[1])):
+        await pipeline.run_digest(weird_id, cfg, storage, trigger="scheduled")
+
+    # Second run with same item -> empty after filter -> heartbeat path.
+    fake_send = AsyncMock(return_value=[42])
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"reddit": [make_distinct_item("reddit", 0)]}
+    )), patch.object(pipeline, "send_digest", new=fake_send):
+        await pipeline.run_digest(weird_id, cfg, storage, trigger="scheduled")
+
+    fake_send.assert_awaited_once()
+    sent = fake_send.await_args.args[0]
+    assert "&lt;weird&gt;" in sent
+    assert "<weird>" not in sent
+
+
+@pytest.mark.asyncio
 async def test_enrich_reddit_items_adds_comments_to_metadata():
     """Verify Reddit items get top_comments+comment_insights in metadata."""
     from unittest.mock import patch
@@ -362,6 +478,36 @@ async def test_enrich_reddit_items_continues_on_non_429():
 
     # Each item attempted — 500 is transient, not a rate-limit abort signal.
     assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_enrich_reddit_items_runs_with_bounded_concurrency():
+    """Enrichment runs in parallel but caps in-flight calls at the configured
+    concurrency. Verifies behavior via a thread-safe in-flight counter."""
+    import threading
+    import time as _time
+    from unittest.mock import patch
+    from aggregator import pipeline
+
+    lock = threading.Lock()
+    state = {"in_flight": 0, "peak": 0}
+
+    def slow_enrich(item):
+        with lock:
+            state["in_flight"] += 1
+            state["peak"] = max(state["peak"], state["in_flight"])
+        _time.sleep(0.05)
+        with lock:
+            state["in_flight"] -= 1
+        return {"url": item["url"], "top_comments": [], "comment_insights": []}
+
+    items = [make_distinct_item("reddit", i) for i in range(6)]
+    with patch.object(pipeline._reddit_enrich, "enrich_reddit_item",
+                      side_effect=slow_enrich):
+        await pipeline._enrich_reddit_items(items)
+
+    assert state["peak"] >= 2  # ran some calls concurrently
+    assert state["peak"] <= pipeline._REDDIT_ENRICH_CONCURRENCY
 
 
 @pytest.mark.asyncio

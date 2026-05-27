@@ -6,22 +6,46 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
-
-_CRON_RE = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
+from apscheduler.triggers.cron import CronTrigger
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 # The set of source registry keys understood by the pipeline. Kept in sync
 # with aggregator.pipeline.SOURCES — adding a source means updating both.
 _KNOWN_SOURCES = {"reddit", "polymarket", "hackernews"}
 
+# Prompt template filenames are constrained to a safe character class so a
+# config writer cannot escape PROMPTS_DIR via path-traversal sequences.
+_PROMPT_FILE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.md$")
+
 
 def _validate_cron(v: str) -> str:
-    if not _CRON_RE.match(v):
-        raise ValueError(f"not a 5-field cron expression: {v!r}")
+    try:
+        CronTrigger.from_crontab(v)
+    except ValueError as e:
+        raise ValueError(f"invalid cron expression {v!r}: {e}") from e
     return v
 
 
+def _strip_nonempty_str(v: str) -> str:
+    s = (v or "").strip()
+    if not s:
+        raise ValueError("must be a non-empty, non-whitespace string")
+    return s
+
+
+def _strip_nonempty_list(v: list[str]) -> list[str]:
+    out = []
+    for item in v:
+        s = (item or "").strip()
+        if not s:
+            raise ValueError("list items must be non-empty after stripping whitespace")
+        out.append(s)
+    return out
+
+
 class ScheduleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     timezone: str
 
 
@@ -30,8 +54,26 @@ class WatchEntry(BaseModel):
     shown in the digest; `aliases` are extra strings (full name, variants)
     fed to source searches to widen recall without diluting the prompt.
     """
-    ticker: str = Field(min_length=1)
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str
     aliases: list[str] = Field(default_factory=list)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        s = _strip_nonempty_str(v)
+        # Single-character tickers over-match in Polymarket's word-boundary
+        # title regex (sources/polymarket.py:_matches_any_symbol) — e.g. "X"
+        # would fire on every X-prefixed token. Two chars is the practical floor.
+        if len(s) < 2:
+            raise ValueError("ticker must be at least 2 characters")
+        return s
+
+    @field_validator("aliases")
+    @classmethod
+    def _v_aliases(cls, v: list[str]) -> list[str]:
+        return _strip_nonempty_list(v)
 
 
 class TopicConfig(BaseModel):
@@ -41,6 +83,8 @@ class TopicConfig(BaseModel):
     - "general"   -> rank globally, keep top_n.
     - "watchlist" -> per_symbol_top_n * len(watch) cap, requires `watch` entries.
     """
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal["general", "watchlist"]
     sources: list[str] = Field(min_length=1)
     prompt_template: str
@@ -58,6 +102,15 @@ class TopicConfig(BaseModel):
     def _v_schedule(cls, v: str) -> str:
         return _validate_cron(v)
 
+    @field_validator("prompt_template")
+    @classmethod
+    def _v_prompt_template(cls, v: str) -> str:
+        if not _PROMPT_FILE_RE.fullmatch(v):
+            raise ValueError(
+                f"prompt_template must match {_PROMPT_FILE_RE.pattern}; got {v!r}"
+            )
+        return v
+
     @field_validator("sources")
     @classmethod
     def _v_sources(cls, v: list[str]) -> list[str]:
@@ -67,6 +120,11 @@ class TopicConfig(BaseModel):
                 f"unknown source(s) {unknown!r}; known: {sorted(_KNOWN_SOURCES)}"
             )
         return v
+
+    @field_validator("subreddits", "polymarket_tags", "hn_keywords")
+    @classmethod
+    def _v_string_lists(cls, v: list[str]) -> list[str]:
+        return _strip_nonempty_list(v)
 
     @model_validator(mode="after")
     def _v_kind_requirements(self) -> "TopicConfig":
@@ -97,26 +155,36 @@ class TopicConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     dedup_window_days: int = Field(ge=1, le=365)
     min_score: float
     per_author_cap: int = Field(ge=1)
 
 
 class SynthConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: str
     max_input_items: int = Field(ge=1, le=500)
     max_output_tokens: int = Field(ge=64, le=8192)
 
 
 class TelegramConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     parse_mode: Literal["MarkdownV2", "Markdown", "HTML"]
 
 
 class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     data_dir: str
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schedule: ScheduleConfig
     scoring: ScoringConfig
     synth: SynthConfig
@@ -127,13 +195,4 @@ class Config(BaseModel):
 
 def load_config(path: str | Path) -> Config:
     raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    topics_raw = raw.get("topics") or {}
-    topics = {tid: TopicConfig(**body) for tid, body in topics_raw.items()}
-    return Config(
-        schedule=ScheduleConfig(**raw["schedule"]),
-        scoring=ScoringConfig(**raw["scoring"]),
-        synth=SynthConfig(**raw["synth"]),
-        telegram=TelegramConfig(**raw["telegram"]),
-        storage=StorageConfig(**raw["storage"]),
-        topics=topics,
-    )
+    return Config.model_validate(raw)

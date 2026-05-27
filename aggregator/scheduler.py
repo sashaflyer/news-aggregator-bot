@@ -29,8 +29,8 @@ def build_scheduler(cfg: Config, storage: Storage) -> AsyncIOScheduler:
     for topic in storage.list_topics():
         if not topic.get("enabled", 1):
             continue
-        trigger = CronTrigger.from_crontab(topic["schedule"],
-                                           timezone=cfg.schedule.timezone)
+        # Scheduler's default timezone (set on AsyncIOScheduler above) covers it.
+        trigger = CronTrigger.from_crontab(topic["schedule"])
         scheduler.add_job(
             _job,
             trigger=trigger,

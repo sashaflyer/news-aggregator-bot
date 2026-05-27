@@ -16,6 +16,7 @@ from aggregator.sources.reddit import RedditSource
 from aggregator.storage import Storage
 from aggregator.relevance import filter_crypto_watchlist_items
 from aggregator.synth import synthesize_async
+from aggregator.url_norm import dedup_key
 from aggregator.delivery.telegram import send_digest
 from aggregator.vendor.last30days import dedupe as _dedupe
 from aggregator.vendor.last30days import reddit_enrich as _reddit_enrich
@@ -24,6 +25,9 @@ from aggregator.vendor.last30days import schema as _schema
 # Cap on how many Reddit items get enriched per run (extra HTTP call each).
 # Higher = better digest quality, more risk of hitting Reddit's anonymous rate limit.
 _REDDIT_ENRICH_CAP = 10
+# Concurrent enrichment slots. Keep small — Reddit's anonymous rate limit is
+# strict and we don't want to earn a ban from a tight burst.
+_REDDIT_ENRICH_CONCURRENCY = 3
 # Comment trimming applied after upstream enrichment fills the field.
 _REDDIT_TOP_COMMENTS_PER_ITEM = 3
 _REDDIT_COMMENT_EXCERPT_CHARS = 150
@@ -88,30 +92,38 @@ async def _enrich_reddit_items(items: list[Item]) -> list[Item]:
 
     Non-Reddit items pass through untouched. Failures (network, rate limit,
     parse) are logged but don't stop the run. Enrichment is capped to
-    _REDDIT_ENRICH_CAP items to keep the per-run HTTP budget bounded.
+    _REDDIT_ENRICH_CAP items to keep the per-run HTTP budget bounded, and
+    runs at most _REDDIT_ENRICH_CONCURRENCY HTTP calls in parallel.
     """
-    enriched_count = 0
-    for item in items:
-        if item.source != "reddit":
-            continue
-        if enriched_count >= _REDDIT_ENRICH_CAP:
-            break
-        if not item.url:
-            continue
-        try:
-            result = await asyncio.to_thread(
-                _reddit_enrich.enrich_reddit_item, {"url": item.url}
-            )
-        except Exception as e:  # noqa: BLE001
-            log.warning("reddit enrich failed for %s: %s", item.url, e)
-            # Upstream raises httpx.HTTPStatusError on 429; the previous check
-            # on `"RateLimit" in type(e).__name__` never matched. On a real
-            # rate-limit, abort the loop so we don't earn a longer ban.
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            if status == 429:
-                log.warning("reddit rate-limited; aborting enrichment for remaining items")
-                break
-            continue
+    candidates = [
+        it for it in items if it.source == "reddit" and it.url
+    ][:_REDDIT_ENRICH_CAP]
+    if not candidates:
+        return items
+
+    sem = asyncio.Semaphore(_REDDIT_ENRICH_CONCURRENCY)
+    abort_rest = False
+
+    async def _one(item: Item) -> bool:
+        nonlocal abort_rest
+        if abort_rest:
+            return False
+        async with sem:
+            if abort_rest:
+                return False
+            try:
+                result = await asyncio.to_thread(
+                    _reddit_enrich.enrich_reddit_item, {"url": item.url}
+                )
+            except Exception as e:  # noqa: BLE001
+                log.warning("reddit enrich failed for %s: %s", item.url, e)
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 429:
+                    log.warning(
+                        "reddit rate-limited; aborting enrichment for remaining items"
+                    )
+                    abort_rest = True
+                return False
 
         raw_comments = (result.get("top_comments") or [])[:_REDDIT_TOP_COMMENTS_PER_ITEM]
         trimmed = [
@@ -123,14 +135,45 @@ async def _enrich_reddit_items(items: list[Item]) -> list[Item]:
             for c in raw_comments
         ]
         insights = (result.get("comment_insights") or [])[:5]
-
         item.metadata["top_comments"] = trimmed
         item.metadata["comment_insights"] = insights
-        enriched_count += 1
+        return True
 
+    results = await asyncio.gather(*(_one(it) for it in candidates))
+    enriched_count = sum(1 for r in results if r)
     if enriched_count:
         log.info("enriched %d reddit items with top comments", enriched_count)
     return items
+
+
+def _cap_per_symbol(
+    items: list[Item], symbols: list[str], per_symbol_top_n: int
+) -> list[Item]:
+    """Group items by best-matching canonical ticker (case-insensitive
+    word-boundary in title or body); keep at most ``per_symbol_top_n`` per
+    ticker. Off-topic items (no matching ticker) are dropped.
+
+    The first symbol in `symbols` to match an item wins, so callers should
+    order `symbols` by priority. Within each bucket, input order is preserved
+    (so a pre-ranked input yields a pre-ranked output per ticker).
+    """
+    import re as _re
+    buckets: dict[str, list[Item]] = {sym: [] for sym in symbols}
+    for it in items:
+        text = f"{it.title} {it.text or ''}".lower()
+        matched = None
+        for sym in symbols:
+            if _re.search(rf"\b{_re.escape(sym.lower())}\b", text):
+                matched = sym
+                break
+        if matched is None:
+            continue
+        if len(buckets[matched]) < per_symbol_top_n:
+            buckets[matched].append(it)
+    out: list[Item] = []
+    for sym in symbols:
+        out.extend(buckets[sym])
+    return out
 
 
 def _apply_per_author_cap(items: list[Item], cap: int) -> list[Item]:
@@ -161,14 +204,16 @@ def _apply_per_author_cap(items: list[Item], cap: int) -> list[Item]:
 
 
 def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> list[Item]:
-    """Dedupe near-duplicates via upstream Jaccard-based dedupe_items, sort by
-    engagement, apply per-author cap, then truncate to top_n.
+    """Sort by engagement, then dedupe near-duplicates via upstream Jaccard-based
+    dedupe_items (which keeps the first occurrence — so the higher-engagement
+    variant wins the slot), then apply per-author cap and truncate to top_n.
     """
     if not items:
         return []
 
-    by_id = {item.id: item for item in items}
-    source_items = [_item_to_source_item(it) for it in items]
+    ranked_first = sorted(items, key=_engagement_score, reverse=True)
+    by_id = {item.id: item for item in ranked_first}
+    source_items = [_item_to_source_item(it) for it in ranked_first]
     try:
         deduped = _dedupe.dedupe_items(source_items, threshold=0.7)
     except Exception:
@@ -178,8 +223,7 @@ def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> l
     deduped_items = [by_id[si.item_id] for si in deduped if si.item_id in by_id]
     log.info("dedupe: %d -> %d items", len(items), len(deduped_items))
 
-    ranked = sorted(deduped_items, key=_engagement_score, reverse=True)
-    capped = _apply_per_author_cap(ranked, per_author_cap)
+    capped = _apply_per_author_cap(deduped_items, per_author_cap)
     return capped[:top_n]
 
 
@@ -221,6 +265,15 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
 
     fetched = len(items)
     if ok_count == 0:
+        fallback_msg = (
+            f"news-aggregator: all sources failed for topic "
+            f"<code>{html.escape(topic_id)}</code>. "
+            f"Check source_health and logs."
+        )
+        try:
+            await send_digest(fallback_msg, topic_id=topic_id, cfg=cfg)
+        except Exception:
+            log.exception("failed to send all-sources-failed heartbeat")
         storage.finish_run(run_id, status="error", items_fetched=0, items_delivered=0,
                            error_message="all sources failed",
                            at=datetime.now(timezone.utc))
@@ -236,7 +289,10 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
     recent_urls = storage.recently_delivered_urls(topic_id=topic_id, since=since)
     if recent_urls:
         before = len(items)
-        items = [it for it in items if it.url not in recent_urls]
+        items = [
+            it for it in items
+            if dedup_key({"url": it.url, "id": it.id}) not in recent_urls
+        ]
         log.info("filtered %d previously-delivered items; %d remain",
                  before - len(items), len(items))
 
@@ -252,12 +308,20 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
                      dropped, len(items))
 
     if topic.kind == "general":
-        top_n = topic.top_n  # type: ignore[assignment]
+        ranked = _score_and_dedup(
+            items, top_n=topic.top_n,  # type: ignore[arg-type]
+            per_author_cap=cfg.scoring.per_author_cap,
+        )
     else:
-        # Cap is per *coin* (canonical ticker), not per alias query.
-        top_n = topic.per_symbol_top_n * len(topic.canonical_symbols)  # type: ignore[operator]
-
-    ranked = _score_and_dedup(items, top_n=top_n, per_author_cap=cfg.scoring.per_author_cap)
+        # Watchlist: rank with generous headroom so dedupe+per-author-cap don't
+        # starve the per-symbol bucketing step that follows.
+        pre_cap = topic.per_symbol_top_n * len(topic.canonical_symbols) * 4  # type: ignore[operator]
+        ranked = _score_and_dedup(
+            items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
+        )
+        ranked = _cap_per_symbol(
+            ranked, topic.canonical_symbols, topic.per_symbol_top_n,  # type: ignore[arg-type]
+        )
 
     # Enrich top Reddit items with comments so the LLM has the actual context.
     ranked = await _enrich_reddit_items(ranked)
@@ -267,11 +331,18 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
     if not ranked:
         log.info("no new items to deliver for %s; sending heartbeat", topic_id)
         message_text = (
-            f"news-aggregator: no new items for {topic_id} "
+            f"news-aggregator: no new items for "
+            f"<code>{html.escape(topic_id)}</code> "
             f"in the last {cfg.scoring.dedup_window_days} days "
             f"(fetched {fetched}, all previously delivered or filtered)"
         )
         msg_ids = await send_digest(message_text, topic_id=topic_id, cfg=cfg)
+        if not msg_ids:
+            storage.finish_run(run_id, status="error", items_fetched=fetched,
+                               items_delivered=0,
+                               error_message="heartbeat send failed",
+                               at=datetime.now(timezone.utc))
+            return RunResult(run_id, "error", fetched, 0)
         storage.log_digest(run_id=run_id, topic_id=topic_id, message_text=message_text,
                            telegram_message_ids=msg_ids,
                            at=datetime.now(timezone.utc))

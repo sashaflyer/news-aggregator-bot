@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -155,3 +156,168 @@ def test_to_item_uses_reddit_id_when_present():
            "engagement": {"score": 1, "num_comments": 0}}
     item = _to_item(raw)
     assert item.id == "reddit:abc123"
+
+
+def test_fetch_subreddit_drops_stickied_and_removed():
+    import json as _json
+    from unittest.mock import patch
+
+    from aggregator.sources.reddit import _fetch_subreddit
+
+    fake = {"data": {"children": [
+        {"data": {"id": "a", "title": "real", "stickied": False,
+                  "removed_by_category": None, "selftext": "",
+                  "subreddit": "x", "permalink": "/r/x/comments/a/",
+                  "url": "https://x/", "score": 1, "num_comments": 0,
+                  "author": "u", "created_utc": 0}},
+        {"data": {"id": "b", "title": "sticky", "stickied": True,
+                  "removed_by_category": None, "selftext": "",
+                  "subreddit": "x", "permalink": "/r/x/comments/b/",
+                  "url": "https://x/", "score": 1, "num_comments": 0,
+                  "author": "u", "created_utc": 0}},
+        {"data": {"id": "c", "title": "removed", "stickied": False,
+                  "removed_by_category": "moderator",
+                  "selftext": "[removed]",
+                  "subreddit": "x", "permalink": "/r/x/comments/c/",
+                  "url": "https://x/", "score": 1, "num_comments": 0,
+                  "author": "u", "created_utc": 0}},
+    ]}}
+
+    class _R:
+        def read(self):
+            return _json.dumps(fake).encode()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    with patch("urllib.request.urlopen", return_value=_R()):
+        posts = _fetch_subreddit("x", limit=10)
+    ids = [p["reddit_id"] for p in posts]
+    assert ids == ["a"]
+
+
+def test_to_item_unescapes_html_entities():
+    from aggregator.sources.reddit import _to_item
+    raw = {
+        "reddit_id": "abc",
+        "title": "Tether&#39;s Q1 attestation",
+        "subreddit": "CryptoCurrency",
+        "url": "https://x.example/",
+        "score": 1,
+        "num_comments": 0,
+        "author": "u",
+        "created_utc": 0,
+        "selftext": "Don&amp;t panic",
+        "engagement": {"score": 1, "num_comments": 0},
+    }
+    item = _to_item(raw)
+    assert "'" in item.title
+    assert "&#39;" not in item.title
+    assert "&amp;" not in item.text
+
+
+def test_fetch_subreddit_429_logs_retry_after_and_returns_empty(caplog):
+    import io
+    import urllib.error
+    from unittest.mock import patch
+
+    from aggregator.sources.reddit import _fetch_subreddit
+
+    err = urllib.error.HTTPError(
+        url="http://x",
+        code=429,
+        msg="x",
+        hdrs={"Retry-After": "12"},
+        fp=io.BytesIO(b""),
+    )
+    with patch("urllib.request.urlopen", side_effect=err):
+        with caplog.at_level("WARNING"):
+            items = _fetch_subreddit("test", limit=5)
+    assert items == []
+    assert any(
+        "429" in rec.message and "retry_after" in rec.message.lower()
+        for rec in caplog.records
+    )
+
+
+def test_fetch_subreddit_5xx_logs_status(caplog):
+    import io
+    import urllib.error
+    from unittest.mock import patch
+
+    from aggregator.sources.reddit import _fetch_subreddit
+
+    err = urllib.error.HTTPError(
+        url="http://x", code=503, msg="x", hdrs={}, fp=io.BytesIO(b"")
+    )
+    with patch("urllib.request.urlopen", side_effect=err):
+        with caplog.at_level("WARNING"):
+            items = _fetch_subreddit("test", limit=5)
+    assert items == []
+    assert any("503" in rec.message for rec in caplog.records)
+
+
+def test_reddit_user_agent_requires_handle(monkeypatch):
+    """Without REDDIT_USER_AGENT or REDDIT_OWNER_HANDLE, module import must fail."""
+    import importlib
+    import aggregator.sources._ua as ua
+    # Snapshot directly: monkeypatch teardown runs AFTER our finally's
+    # importlib.reload, so the reload would see stale (cleared) env unless
+    # we restore explicitly here.
+    orig_ua = os.environ.get("REDDIT_USER_AGENT")
+    orig_handle = os.environ.get("REDDIT_OWNER_HANDLE")
+    try:
+        monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
+        monkeypatch.delenv("REDDIT_OWNER_HANDLE", raising=False)
+        with pytest.raises(RuntimeError, match="REDDIT_USER_AGENT"):
+            importlib.reload(ua)
+    finally:
+        if orig_ua is not None:
+            os.environ["REDDIT_USER_AGENT"] = orig_ua
+        else:
+            os.environ.pop("REDDIT_USER_AGENT", None)
+        os.environ["REDDIT_OWNER_HANDLE"] = orig_handle or "test-handle"
+        importlib.reload(ua)
+
+
+def test_reddit_user_agent_strips_u_prefix(monkeypatch):
+    """Operators sometimes write 'u/alice'; the composed UA must not double
+    the prefix into '/u/u/alice'."""
+    import importlib
+    import aggregator.sources._ua as ua
+    orig_ua = os.environ.get("REDDIT_USER_AGENT")
+    orig_handle = os.environ.get("REDDIT_OWNER_HANDLE")
+    try:
+        monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
+        monkeypatch.setenv("REDDIT_OWNER_HANDLE", "u/alice")
+        importlib.reload(ua)
+        assert "/u/alice" in ua.USER_AGENT
+        assert "/u/u/alice" not in ua.USER_AGENT
+    finally:
+        if orig_ua is not None:
+            os.environ["REDDIT_USER_AGENT"] = orig_ua
+        else:
+            os.environ.pop("REDDIT_USER_AGENT", None)
+        os.environ["REDDIT_OWNER_HANDLE"] = orig_handle or "test-handle"
+        importlib.reload(ua)
+
+
+def test_reddit_user_agent_from_handle(monkeypatch):
+    """REDDIT_OWNER_HANDLE composes a contact-bearing UA without REDDIT_USER_AGENT."""
+    import importlib
+    import aggregator.sources._ua as ua
+    orig_ua = os.environ.get("REDDIT_USER_AGENT")
+    orig_handle = os.environ.get("REDDIT_OWNER_HANDLE")
+    try:
+        monkeypatch.delenv("REDDIT_USER_AGENT", raising=False)
+        monkeypatch.setenv("REDDIT_OWNER_HANDLE", "alice")
+        importlib.reload(ua)
+        assert "/u/alice" in ua.USER_AGENT
+    finally:
+        if orig_ua is not None:
+            os.environ["REDDIT_USER_AGENT"] = orig_ua
+        else:
+            os.environ.pop("REDDIT_USER_AGENT", None)
+        os.environ["REDDIT_OWNER_HANDLE"] = orig_handle or "test-handle"
+        importlib.reload(ua)

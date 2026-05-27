@@ -9,10 +9,15 @@ from typing import Any
 import httpx
 
 from aggregator.config import Config
+from aggregator.delivery._html_filter import sanitize_outgoing
 
 log = logging.getLogger(__name__)
 
-_MAX_CHARS = 4000
+# Telegram's 4096 cap counts UTF-16 code units, not Python str chars: a single
+# emoji is 1 char in Python but 2 code units in UTF-16. Budget in UTF-16 so
+# emoji-heavy / surrogate-pair-heavy chunks don't slip past the cap.
+_TG_HARD_LIMIT_UTF16 = 4096
+_SUFFIX_RESERVE = 32  # leaves room for "\n\n<i>(NN/NN)</i>" page counter.
 _RETRIES = 3
 _BACKOFF_BASE = 2.0
 # 4xx responses Telegram won't change its mind on — don't waste retries.
@@ -20,17 +25,31 @@ _BACKOFF_BASE = 2.0
 _NON_RETRIABLE_STATUSES = frozenset({401, 403, 404})
 
 
-def _chunk(text: str, limit: int = _MAX_CHARS) -> list[str]:
-    if len(text) <= limit:
+def _utf16_len(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
+    if _utf16_len(text) <= limit:
         return [text]
     chunks: list[str] = []
     remaining = text
-    while len(remaining) > limit:
-        cut = remaining.rfind("\n\n", 0, limit)
-        if cut == -1:
-            cut = remaining.rfind("\n", 0, limit)
-        if cut == -1:
-            cut = limit
+    while _utf16_len(remaining) > limit:
+        # Binary search the largest prefix that fits the UTF-16 budget.
+        lo, hi = 0, len(remaining)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if _utf16_len(remaining[:mid]) <= limit:
+                lo = mid
+            else:
+                hi = mid - 1
+        cut = lo
+        # Walk back to a sensible boundary if one exists nearby.
+        for sep in ("\n\n", "\n", ". "):
+            idx = remaining.rfind(sep, 0, cut)
+            if idx > 0 and idx > cut - 200:
+                cut = idx + len(sep)
+                break
         chunks.append(remaining[:cut].rstrip())
         remaining = remaining[cut:].lstrip()
     if remaining:
@@ -91,6 +110,22 @@ async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                             resp2.status_code, resp2.text[:200])
                 return None
 
+            # 429: Telegram tells us exactly how long to wait via
+            # parameters.retry_after. A fixed exponential backoff can be
+            # shorter than that wait, which just extends the ban.
+            if resp.status_code == 429:
+                try:
+                    retry_after = float(
+                        resp.json().get("parameters", {}).get("retry_after", 0)
+                    )
+                except (ValueError, KeyError, AttributeError):
+                    retry_after = 0
+                delay = retry_after if retry_after > 0 else _BACKOFF_BASE ** attempt
+                log.warning("telegram 429; sleeping %.1fs", delay)
+                if attempt < _RETRIES:
+                    await asyncio.sleep(delay)
+                continue
+
             log.warning("telegram send returned %s: %s", resp.status_code, resp.text[:200])
             if resp.status_code in _NON_RETRIABLE_STATUSES:
                 # Bot blocked, token revoked, or chat gone — retrying with
@@ -110,6 +145,12 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
         log.error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set; skipping send for %s",
                   topic_id)
         return []
+
+    # Whitelist outgoing HTML so a prompt-injected anchor in LLM output can't
+    # smuggle a phishing href through our trusted bot. No-op under non-HTML
+    # parse modes (the LLM output for those should not contain HTML anyway).
+    if cfg.telegram.parse_mode == "HTML":
+        text = sanitize_outgoing(text)
 
     chunks = _chunk(text)
     ids: list[int] = []

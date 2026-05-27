@@ -10,24 +10,20 @@ indirections so tests can mock without touching the network.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
-import os
 import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
+from aggregator.sources._ua import USER_AGENT
 from aggregator.sources.base import Item, Source
 from aggregator.vendor.last30days import reddit_public
 
 log = logging.getLogger(__name__)
-
-
-def _user_agent() -> str:
-    """Reddit explicitly blocks generic UAs. Honor REDDIT_USER_AGENT from .env."""
-    return os.environ.get("REDDIT_USER_AGENT", "news-aggregator/0.1")
 
 
 def _fetch_subreddit(sub: str, limit: int = 25) -> list[dict[str, Any]]:
@@ -37,18 +33,40 @@ def _fetch_subreddit(sub: str, limit: int = 25) -> list[dict[str, Any]]:
     for a once-daily digest pulling a handful of subs this is fine.
     """
     capped = max(1, min(int(limit), 100))
-    url = f"https://www.reddit.com/r/{sub}/hot.json?limit={capped}"
-    req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+    url = f"https://www.reddit.com/r/{sub}/hot.json?limit={capped}&raw_json=1"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = json.loads(resp.read())
-    except (urllib.error.URLError, json.JSONDecodeError) as e:
-        log.warning("reddit hot fetch failed for r/%s: %s", sub, e)
+    except urllib.error.HTTPError as e:
+        retry_after = ""
+        try:
+            retry_after = e.headers.get("Retry-After", "") if e.headers else ""
+        except AttributeError:
+            retry_after = ""
+        log.warning(
+            "reddit hot fetch failed for r/%s: HTTP %s (retry_after=%r)",
+            sub, e.code, retry_after,
+        )
+        return []
+    except urllib.error.URLError as e:
+        log.warning("reddit hot fetch network error for r/%s: %s", sub, e)
+        return []
+    except json.JSONDecodeError as e:
+        log.warning("reddit hot fetch decode error for r/%s: %s", sub, e)
         return []
 
     posts: list[dict[str, Any]] = []
     for child in raw.get("data", {}).get("children", []):
         p = child.get("data", {})
+        # Drop stickied (AutoModerator dailies, mod announcements) and posts
+        # that listings still surface after removal/deletion.
+        if p.get("stickied"):
+            continue
+        if p.get("removed_by_category"):
+            continue
+        if (p.get("selftext") or "").strip() in {"[removed]", "[deleted]"}:
+            continue
         permalink = p.get("permalink") or ""
         url = f"https://www.reddit.com{permalink}" if permalink else (p.get("url") or "")
         posts.append({
@@ -127,9 +145,9 @@ def _to_item(raw: dict[str, Any]) -> Item:
     return Item(
         id=f"reddit:{raw_id}",
         source="reddit",
-        title=str(raw.get("title", "")).strip(),
+        title=html.unescape(str(raw.get("title", "")).strip()),
         url=url,
-        text=str(raw.get("selftext", "")),
+        text=html.unescape(str(raw.get("selftext", ""))),
         created_at=_parse_created_at(raw),
         engagement_raw={
             "score": score,

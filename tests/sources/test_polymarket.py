@@ -25,9 +25,25 @@ async def test_fetch_with_symbols_filters_by_question():
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     with patch("aggregator.sources.polymarket._fetch_by_tag", return_value=fixture):
         src = PolymarketSource()
-        items = await src.fetch({"symbols": ["BTC"]})
+        # Caller must opt into polymarket_tags explicitly; symbols alone no
+        # longer back-fills the broad 'crypto' tag (audit M8).
+        items = await src.fetch({
+            "polymarket_tags": ["crypto"],
+            "symbols": ["BTC"],
+        })
     for it in items:
         assert "BTC" in it.title.upper() or "BTC" in it.text.upper()
+
+
+@pytest.mark.asyncio
+async def test_polymarket_skips_when_no_tags_configured():
+    """Symbols alone must not implicitly back-fill the 'crypto' tag (audit M8)."""
+    from aggregator.sources.polymarket import PolymarketSource
+    with patch("aggregator.sources.polymarket._fetch_by_tag") as mock_fetch:
+        src = PolymarketSource()
+        items = await src.fetch({"polymarket_tags": [], "symbols": ["SOL"]})
+    assert items == []
+    mock_fetch.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -59,6 +75,26 @@ async def test_symbol_filter_word_boundary_not_substring():
         src = PolymarketSource()
         items = await src.fetch({"symbols": ["ETH", "ADA"]})
     assert items == []
+
+
+def test_parse_created_at_bad_returns_none_not_now():
+    from aggregator.sources.polymarket import _parse_created_at
+    assert _parse_created_at("not a date") is None
+
+
+def test_fetch_by_tag_does_not_raise_on_signature():
+    """Regression: _fetch_by_tag must satisfy the vendor's required positional
+    args (from_date, to_date). All other tests mock _fetch_by_tag directly so
+    they wouldn't catch a TypeError at the upstream call site.
+    """
+    from aggregator.sources.polymarket import _fetch_by_tag
+    with patch(
+        "aggregator.sources.polymarket._upstream.search_polymarket",
+        return_value={"events": []},
+    ) as mock:
+        result = _fetch_by_tag("crypto")
+    assert result == []
+    mock.assert_called_once()
 
 
 def test_to_item_reads_volume_from_volume1mo():

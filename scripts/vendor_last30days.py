@@ -6,7 +6,9 @@ Run: python scripts/vendor_last30days.py [<commit-sha>]
 Resolution order for the ref:
   1. Explicit argv[1], if given.
   2. The `Commit:` line of an existing DEST/UPSTREAM.md (re-pin to last vendor).
-  3. Upstream `main` (resolved to the current SHA at fetch time).
+  3. Otherwise: exit with an error. Floating to upstream `main` is a
+     reproducibility footgun — first-time bootstrap on different days would
+     yield different code with no audit trail.
 
 Each run is a clean re-vendor: DEST is removed and recreated before fetching,
 so stale files left over from a previous MODULES list cannot linger.
@@ -69,15 +71,32 @@ def resolve_sha(ref: str) -> str:
     return data["sha"]
 
 
-def _read_pinned_sha() -> str | None:
-    """Return the SHA recorded in DEST/UPSTREAM.md, or None if not present."""
-    upstream_md = DEST / "UPSTREAM.md"
-    if not upstream_md.exists():
+def _read_pinned_sha_from(upstream_md_path: Path) -> str | None:
+    """Return the SHA recorded in upstream_md_path, or None if missing/unparseable."""
+    if not upstream_md_path.exists():
         return None
-    for line in upstream_md.read_text(encoding="utf-8").splitlines():
+    for line in upstream_md_path.read_text(encoding="utf-8").splitlines():
         if line.startswith("Commit:"):
             return line.split(":", 1)[1].strip()
     return None
+
+
+def _read_pinned_sha() -> str | None:
+    """Return the SHA recorded in DEST/UPSTREAM.md, or None if not present."""
+    return _read_pinned_sha_from(DEST / "UPSTREAM.md")
+
+
+def resolve_ref(argv_sha: str | None, upstream_md_path: Path) -> str:
+    """Resolve a vendor ref or exit. No silent fallback to upstream main."""
+    if argv_sha:
+        return argv_sha
+    pinned = _read_pinned_sha_from(upstream_md_path)
+    if pinned:
+        return pinned
+    sys.exit(
+        "no SHA provided and UPSTREAM.md is missing or unparseable. "
+        "Pass an explicit SHA: python scripts/vendor_last30days.py <sha>"
+    )
 
 
 def _patch_from_lib_import(path: Path) -> None:
@@ -95,17 +114,12 @@ def _patch_from_lib_import(path: Path) -> None:
 
 def main() -> None:
     # Resolve the ref BEFORE wiping DEST, so a previously-pinned SHA can be read.
-    if len(sys.argv) > 1:
-        ref = sys.argv[1]
+    argv_sha = sys.argv[1] if len(sys.argv) > 1 else None
+    ref = resolve_ref(argv_sha, DEST / "UPSTREAM.md")
+    if argv_sha:
         print(f"Using explicit ref from argv: {ref}")
     else:
-        pinned = _read_pinned_sha()
-        if pinned:
-            ref = pinned
-            print(f"Re-using previously pinned SHA from UPSTREAM.md: {ref}")
-        else:
-            ref = "main"
-            print("No previous pin found; using upstream 'main' (will resolve to a SHA).")
+        print(f"Re-using previously pinned SHA from UPSTREAM.md: {ref}")
 
     sha = resolve_sha(ref)
     print(f"Vendoring {REPO}@{sha}")

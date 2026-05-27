@@ -15,6 +15,22 @@ Restart=on-failure
 RestartSec=10s
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=news-aggregator
+
+# Hardening. Zero-cost defense in depth; the bot only needs egress HTTPS
+# and write access to its SQLite data dir.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/news-aggregator
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

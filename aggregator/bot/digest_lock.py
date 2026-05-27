@@ -17,3 +17,14 @@ def lock_for(topic_id: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _topic_locks[topic_id] = lock
     return lock
+
+
+def init_locks(topic_ids: list[str]) -> None:
+    """Call once at startup before any handler runs.
+
+    Pre-allocates an asyncio.Lock per topic so lock_for() never needs to
+    create one under handler/scheduler contention. Removes the implicit
+    'no await in lock_for' invariant since locks already exist.
+    """
+    for tid in topic_ids:
+        _topic_locks.setdefault(tid, asyncio.Lock())

@@ -32,3 +32,25 @@ async def test_lock_is_an_asyncio_lock():
     async with lock:
         assert lock.locked()
     assert not lock.locked()
+
+
+def test_init_locks_for_topics_preallocates_one_per_topic():
+    """init_locks() seeds the registry so lock_for() at handler time never
+    has to create a Lock under contention."""
+    from aggregator.bot.digest_lock import init_locks
+
+    init_locks(["t1", "t2"])
+    assert "t1" in _topic_locks
+    assert "t2" in _topic_locks
+    assert lock_for("t1") is _topic_locks["t1"]
+
+
+def test_init_locks_is_idempotent_and_preserves_existing_locks():
+    """Calling init_locks twice (or after lock_for) must not replace existing
+    Locks — otherwise an in-flight digest could lose its lock identity."""
+    from aggregator.bot.digest_lock import init_locks
+
+    existing = lock_for("t1")
+    init_locks(["t1", "t2"])
+    assert lock_for("t1") is existing
+    assert "t2" in _topic_locks

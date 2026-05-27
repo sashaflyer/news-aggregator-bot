@@ -127,6 +127,39 @@ async def test_digest_already_running_replies_and_does_not_call_pipeline():
 
 
 @pytest.mark.asyncio
+async def test_digest_concurrent_invocations_get_busy_reply():
+    """A second /digest while one is in flight must not queue — it gets
+    'already running' immediately. Exercises the non-blocking acquire path
+    where the lock is held by a concurrent task."""
+    cfg = _CfgStub(["crypto_general"])
+    lock = lock_for("crypto_general")
+
+    async def hold():
+        async with lock:
+            await asyncio.sleep(0.5)
+
+    holder = asyncio.create_task(hold())
+    # Yield once so the holder task actually grabs the lock.
+    await asyncio.sleep(0)
+
+    upd = make_update(chat_id=12345)
+    ctx = make_ctx(args=["crypto_general"], cfg=cfg)
+    try:
+        with patch("aggregator.bot.commands.digest.run_digest") as run_d:
+            await handle_digest(upd, ctx)
+        upd.message.reply_text.assert_awaited_once()
+        text = upd.message.reply_text.await_args.args[0]
+        assert "already running" in text.lower()
+        run_d.assert_not_called()
+    finally:
+        holder.cancel()
+        try:
+            await holder
+        except (asyncio.CancelledError, BaseException):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_digest_pipeline_exception_is_reported_and_lock_released():
     cfg = _CfgStub(["crypto_general"])
     upd = make_update(chat_id=12345)
