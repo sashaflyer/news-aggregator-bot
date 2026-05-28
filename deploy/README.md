@@ -51,6 +51,23 @@ journalctl -u news-aggregator -f
 Send `/status` to your Telegram bot. You should receive a status reply within a
 second. Wait for the next cron tick (or run `sudo -u news-bot /opt/news-aggregator/.venv/bin/python -m aggregator --config /opt/news-aggregator/config.toml run --topic crypto_general`) to verify a digest arrives.
 
+## Watchdog and auto-recovery
+
+The unit runs with `Type=notify` + `WatchdogSec=180`. The bot pings systemd
+from the asyncio event loop every 60s; if the loop wedges (the failure mode
+from the 2026-05-28 incident, where one Telegram polling network error left
+the process alive but mute for 17 hours), systemd sends SIGTERM/SIGKILL after
+180s and `Restart=on-failure` brings it back. Confirm a restart was triggered
+by watchdog (not by exit code) with:
+
+```bash
+journalctl -u news-aggregator -g "Watchdog timeout"
+```
+
+To tune the timeout, edit `WatchdogSec=` in the unit. Keep the in-process
+interval (`_WATCHDOG_INTERVAL_S` in `aggregator/__main__.py`) at roughly half
+of it so a single missed ping doesn't trigger a restart.
+
 ## Updating
 
 ```bash

@@ -28,7 +28,28 @@ def build_application(*, storage, scheduler=None, cfg: Config) -> Application:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
 
-    app = Application.builder().token(token).build()
+    # Explicit HTTPXRequest timeouts. PTB's defaults (5s connect/read/write,
+    # 1s pool) are conservative for transient network issues. We widen modestly
+    # so a single Telegram-side hiccup surfaces as a real error inside our retry
+    # loop instead of being clipped before the server can respond. get_updates
+    # gets a longer read window because it uses long polling.
+    #
+    # Defense in depth only — the structural recovery for "alive but mute" is
+    # the systemd watchdog wired up in aggregator/__main__.py. See the
+    # 2026-05-28 incident notes in deploy/README.md.
+    app = (
+        Application.builder()
+        .token(token)
+        .connect_timeout(10.0)
+        .read_timeout(30.0)
+        .write_timeout(20.0)
+        .pool_timeout(5.0)
+        .get_updates_connect_timeout(10.0)
+        .get_updates_read_timeout(30.0)
+        .get_updates_write_timeout(20.0)
+        .get_updates_pool_timeout(5.0)
+        .build()
+    )
     app.bot_data["storage"] = storage
     app.bot_data["scheduler"] = scheduler
     app.bot_data["cfg"] = cfg

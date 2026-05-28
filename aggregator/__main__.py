@@ -21,6 +21,10 @@ from aggregator.config import load_config
 from aggregator.pipeline import run_digest
 from aggregator.scheduler import build_scheduler
 from aggregator.storage import Storage
+from aggregator import watchdog as _watchdog
+
+# Half of the unit's WatchdogSec=180 so one missed ping doesn't trip a restart.
+_WATCHDOG_INTERVAL_S = 60.0
 
 log = logging.getLogger(__name__)
 
@@ -106,10 +110,27 @@ async def serve(*, config_path: str) -> None:
     await app.start()
     await app.updater.start_polling()
     scheduler.start()
+
+    # systemd Type=notify integration. READY=1 tells systemd the unit is up;
+    # WATCHDOG=1 must keep arriving (every _WATCHDOG_INTERVAL_S) or systemd
+    # restarts the process after WatchdogSec. A wedged event loop — the failure
+    # mode that hid for 17h on 2026-05-28 — cannot run watchdog_pinger, so it
+    # converts "alive but mute" into an automatic restart. No-op when running
+    # outside systemd (NOTIFY_SOCKET unset).
+    _watchdog.sd_notify("READY=1")
+    pinger_task = asyncio.create_task(
+        _watchdog.watchdog_pinger(interval_s=_WATCHDOG_INTERVAL_S)
+    )
     try:
         await stop.wait()
     finally:
         log.info("shutting down")
+        _watchdog.sd_notify("STOPPING=1")
+        pinger_task.cancel()
+        try:
+            await pinger_task
+        except asyncio.CancelledError:
+            pass
         # wait=True so an in-flight digest finishes; otherwise its run_history
         # row stays in 'started' forever and the items it was about to record
         # as delivered can be re-delivered on next launch.

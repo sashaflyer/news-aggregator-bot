@@ -4,7 +4,14 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# Type=notify lets us tell systemd READY=1 once the bot + scheduler are up,
+# and ping WATCHDOG=1 from the event loop. WatchdogSec converts the
+# "process alive but event loop wedged" failure mode (2026-05-28 incident)
+# into an automatic restart, which Restart=on-failure cannot do on its own
+# because a wedged process never exits.
+Type=notify
+NotifyAccess=main
+WatchdogSec=180
 User=news-bot
 Group=news-bot
 WorkingDirectory=/opt/news-aggregator

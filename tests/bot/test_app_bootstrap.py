@@ -50,6 +50,36 @@ async def test_publish_commands_calls_set_my_commands(tmp_path):
     assert pairs == expected
 
 
+def test_build_application_sets_explicit_httpx_timeouts(tmp_path):
+    """PTB's defaults are 5s read/write/connect, 1s pool — too tight to
+    survive ordinary Telegram-side hiccups and giving the underlying
+    httpx pool no slack. We override with explicit values; this test
+    pins them so a silent PTB default change can't undo the hardening
+    (2026-05-28 incident — see deploy/README.md)."""
+    import httpx
+    from aggregator.bot.app import build_application
+
+    cfg = load_config("config.example.toml")
+    s = Storage(str(tmp_path / "t.db"))
+    s.init_schema()
+    s.seed_topics(cfg.topics)
+
+    app = build_application(storage=s, scheduler=None, cfg=cfg)
+
+    expected = httpx.Timeout(connect=10.0, read=30.0, write=20.0, pool=5.0)
+
+    # Both clients (regular for sendMessage and get_updates for long-polling).
+    # PTB v21 stores them as a tuple in Bot._request; assert the underlying
+    # httpx Timeout config matches on both.
+    requests = app.bot._request
+    assert len(requests) == 2, "PTB Bot._request must hold both clients"
+    for client in requests:
+        assert client._client_kwargs["timeout"] == expected, (
+            f"client {client!r} has timeout {client._client_kwargs['timeout']!r}, "
+            f"expected {expected!r}"
+        )
+
+
 @pytest.mark.asyncio
 async def test_publish_commands_swallows_errors():
     """A failure to publish commands must not crash startup."""
