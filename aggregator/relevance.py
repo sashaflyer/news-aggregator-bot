@@ -1,10 +1,14 @@
 """Topic-relevance filter to drop off-domain items that slipped past source-side search.
 
-The watchlist Reddit/HN keyword search submits bare tickers (e.g. "SOL", "AVAX")
-to global search endpoints. Those terms collide with NHL teams (Colorado
+The watchlist HackerNews keyword search submits bare tickers (e.g. "SOL", "AVAX")
+to a global search endpoint. Those terms collide with NHL teams (Colorado
 Avalanche), video games (Nine Sols, Warframe's Sol system), perfume brands
-(Sol de Janeiro), and assorted noise. This module drops items that look
-off-topic for cryptocurrency before they reach the ranker and the LLM.
+(Sol de Janeiro), and assorted noise. This module drops such items before they
+reach the ranker and the LLM.
+
+Curated sources pass through unconditionally: Polymarket (matched via curated
+tags) and RSS (per-coin feeds / broad crypto outlets). Only keyword-search
+sources (HackerNews) are gated by the crypto-context check.
 
 Conservative by design: better to drop a borderline real crypto post than
 to ship Stanley Cup recaps to the watchlist.

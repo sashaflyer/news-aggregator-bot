@@ -67,7 +67,6 @@ def test_btc_token_does_not_mean_blockchain():
 # ---- filter_crypto_watchlist_items ----
 
 def test_rss_and_polymarket_pass_without_keyword():
-    from aggregator.relevance import filter_crypto_watchlist_items
     rss = _it("rss", "Sui Foundation announces grants program")
     poly = _it("polymarket", "Will X happen by 2026?")
     out = filter_crypto_watchlist_items([rss, poly])
@@ -75,8 +74,12 @@ def test_rss_and_polymarket_pass_without_keyword():
 
 
 def test_hn_item_still_gated_by_keyword():
-    from aggregator.relevance import filter_crypto_watchlist_items
     on = _it("hackernews", "New DeFi protocol launches on Solana")  # has 'defi'
     off = _it("hackernews", "Avalanche ski resort opens early")     # no crypto context
     out = filter_crypto_watchlist_items([on, off])
     assert on in out and off not in out
+
+
+def test_unknown_source_dropped_without_keyword():
+    off = _it("twitter", "Avalanche ski resort opens early")  # not polymarket/rss, no crypto term
+    assert filter_crypto_watchlist_items([off]) == []
