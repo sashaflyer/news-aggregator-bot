@@ -29,8 +29,13 @@ def build_scheduler(cfg: Config, storage: Storage) -> AsyncIOScheduler:
     for topic in storage.list_topics():
         if not topic.get("enabled", 1):
             continue
-        # Scheduler's default timezone (set on AsyncIOScheduler above) covers it.
-        trigger = CronTrigger.from_crontab(topic["schedule"])
+        # Pass the configured tz explicitly: from_crontab() otherwise bakes in
+        # the *server-local* zone (UTC on the prod host) and ignores the
+        # AsyncIOScheduler(timezone=...) above — which shifted every digest by
+        # the MSK offset (+3h) in production.
+        trigger = CronTrigger.from_crontab(
+            topic["schedule"], timezone=cfg.schedule.timezone
+        )
         scheduler.add_job(
             _job,
             trigger=trigger,

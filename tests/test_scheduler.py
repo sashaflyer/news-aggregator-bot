@@ -32,6 +32,37 @@ def test_build_scheduler_registers_one_job_per_topic(tmp_path):
     assert job_topic_args == expected
 
 
+def test_build_scheduler_passes_configured_timezone_to_cron_trigger(tmp_path):
+    """Regression: cron triggers must be built with the configured timezone.
+
+    ``CronTrigger.from_crontab(expr)`` ignores the scheduler's own timezone and
+    defaults to the *server-local* zone unless ``timezone=`` is passed. On the
+    UTC prod host that silently shifted every digest by the MSK offset (+3h):
+    `0 8,20 * * *` MSK was firing at 08:00/20:00 UTC. We assert the kwarg is
+    passed (machine-independent — checking the resulting trigger.timezone would
+    pass spuriously on a machine whose local zone already equals the config).
+    """
+    from aggregator import scheduler as sched_mod
+
+    cfg = load_config("config.example.toml")  # [schedule] timezone = Europe/Moscow
+    s = Storage(str(tmp_path / "tz.db"))
+    s.init_schema()
+    s.seed_topics(cfg.topics)
+
+    with patch.object(sched_mod, "AsyncIOScheduler") as FakeSched, \
+         patch.object(sched_mod.CronTrigger, "from_crontab",
+                      wraps=sched_mod.CronTrigger.from_crontab) as spy:
+        FakeSched.return_value = MagicMock()
+        sched_mod.build_scheduler(cfg, s)
+
+    assert spy.call_count >= 1
+    for call in spy.call_args_list:
+        assert call.kwargs.get("timezone") == cfg.schedule.timezone, (
+            "CronTrigger.from_crontab must be called with "
+            "timezone=cfg.schedule.timezone so digests fire in the configured zone"
+        )
+
+
 @pytest.mark.asyncio
 async def test_scheduler_job_acquires_topic_lock():
     """If the lock for a topic is already held, _job must wait for release
