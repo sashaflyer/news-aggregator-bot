@@ -11,38 +11,17 @@ from aggregator.relevance import filter_crypto_watchlist_items, is_crypto_relate
 from aggregator.sources.base import Item
 
 
-def _reddit(title: str, *, subreddit: str = "", text: str = "") -> Item:
-    return Item(
-        id=f"reddit:{title[:30]}",
-        source="reddit",
-        title=title,
-        url=f"https://reddit.com/{title[:30]}",
-        text=text,
-        created_at=datetime.now(timezone.utc),
-        metadata={"subreddit": subreddit},
-    )
-
-
-def _polymarket(title: str) -> Item:
-    return Item(
-        id=f"polymarket:{title[:30]}",
-        source="polymarket",
-        title=title,
-        url=f"https://polymarket.com/{title[:30]}",
-        text="",
-        created_at=datetime.now(timezone.utc),
-    )
+def _it(source, title, text=""):
+    return Item(id=f"{source}:{title}", source=source, title=title, url="u", text=text,
+                created_at=datetime(2026, 5, 28, tzinfo=timezone.utc))
 
 
 def _hn(title: str, *, text: str = "") -> Item:
-    return Item(
-        id=f"hn:{title[:30]}",
-        source="hackernews",
-        title=title,
-        url=f"https://news.ycombinator.com/{title[:30]}",
-        text=text,
-        created_at=datetime.now(timezone.utc),
-    )
+    return _it("hackernews", title, text)
+
+
+def _polymarket(title: str) -> Item:
+    return _it("polymarket", title)
 
 
 # ---- is_crypto_related ----
@@ -87,78 +66,17 @@ def test_btc_token_does_not_mean_blockchain():
 
 # ---- filter_crypto_watchlist_items ----
 
-def test_polymarket_items_always_pass():
-    items = [_polymarket("Will Trump pardon someone obscure?")]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana"])
-    assert out == items
+def test_rss_and_polymarket_pass_without_keyword():
+    from aggregator.relevance import filter_crypto_watchlist_items
+    rss = _it("rss", "Sui Foundation announces grants program")
+    poly = _it("polymarket", "Will X happen by 2026?")
+    out = filter_crypto_watchlist_items([rss, poly])
+    assert rss in out and poly in out
 
 
-def test_reddit_from_trusted_subreddit_passes_even_without_keyword():
-    # Real example: "Buy Sol now or regret later" in r/solana — no crypto
-    # keyword in title, but the user trusts r/solana via topic config.
-    items = [_reddit("Buy Sol now or regret later", subreddit="solana")]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana", "cryptocurrency"])
-    assert out == items
-
-
-def test_trusted_subreddit_matching_strips_r_prefix():
-    items = [_reddit("Anything", subreddit="r/Solana")]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana"])
-    assert out == items
-
-
-def test_reddit_off_topic_subreddit_without_keyword_dropped():
-    items = [
-        _reddit("Colorado Avalanche win Game 7", subreddit="hockey"),
-        _reddit("Nine Sols speedrun world record", subreddit="NineSols"),
-        _reddit("Sol de Janeiro perfume review", subreddit="FemFragLab"),
-    ]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana", "cryptocurrency"])
-    assert out == []
-
-
-def test_reddit_off_topic_subreddit_with_keyword_passes():
-    items = [
-        _reddit("Coinbase listed SOL futures today", subreddit="WallStreetBets"),
-    ]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana"])
-    assert out == items
-
-
-def test_hn_filtered_by_keyword():
-    on = _hn("Solana validator client v2 released", text="blockchain perf upgrade")
-    off = _hn("Nine Sols hits 1M sales")
-    out = filter_crypto_watchlist_items([on, off], trusted_subreddits=[])
-    assert out == [on]
-
-
-def test_full_production_noise_mix():
-    items = [
-        # On-topic via keyword
-        _reddit("Stablecoin issuer files for IPO", subreddit="WallStreetBets"),
-        # On-topic via trusted subreddit (no keyword)
-        _reddit("Buy Sol now or regret later", subreddit="solana"),
-        # On-topic via Polymarket pass-through
-        _polymarket("BTC above 120K by July 1"),
-        # Pure noise
-        _reddit("Colorado Avalanche advance to WCF", subreddit="hockey"),
-        _reddit("Praise Sol and Lua", subreddit="Warframe"),
-        _reddit("Playstation Plus Monthly Games for May", subreddit="PS5"),
-        _hn("Build your own Sol(ar) system in Python", text=""),
-    ]
-    out = filter_crypto_watchlist_items(items, trusted_subreddits=["solana", "cryptocurrency"])
-    titles = [i.title for i in out]
-    assert "Stablecoin issuer files for IPO" in titles
-    assert "Buy Sol now or regret later" in titles
-    assert "BTC above 120K by July 1" in titles
-    assert "Colorado Avalanche advance to WCF" not in titles
-    assert "Praise Sol and Lua" not in titles
-    assert "Playstation Plus Monthly Games for May" not in titles
-    assert len(out) == 3
-
-
-def test_missing_subreddit_metadata_falls_through_to_keyword_check():
-    on = _reddit("DeFi protocol got hacked", subreddit="")
-    off = _reddit("Hockey postgame thread", subreddit="")
-    out = filter_crypto_watchlist_items([on, off], trusted_subreddits=["solana"])
-    assert out == [on]
+def test_hn_item_still_gated_by_keyword():
+    from aggregator.relevance import filter_crypto_watchlist_items
+    on = _it("hackernews", "New DeFi protocol launches on Solana")  # has 'defi'
+    off = _it("hackernews", "Avalanche ski resort opens early")     # no crypto context
+    out = filter_crypto_watchlist_items([on, off])
+    assert on in out and off not in out

@@ -64,36 +64,18 @@ def is_crypto_related(*texts: str) -> bool:
     return False
 
 
-def _normalize_subreddit(name: str) -> str:
-    """Lowercase and strip an optional ``r/`` prefix."""
-    s = (name or "").strip().lower()
-    if s.startswith("r/"):
-        s = s[2:]
-    return s
-
-
-def filter_crypto_watchlist_items(
-    items: Iterable[Item],
-    trusted_subreddits: Iterable[str],
-) -> list[Item]:
+def filter_crypto_watchlist_items(items: Iterable[Item]) -> list[Item]:
     """Drop off-topic items from a crypto-watchlist fetch.
 
-    Pass-through rules:
-    - Polymarket items always pass (they match via curated tags, not keyword search).
-    - Reddit items from a user-trusted subreddit (listed in the topic config) pass.
-    - Reddit/HN items pass only if title or body contains a crypto-context term.
+    - Polymarket / RSS items always pass (curated by tag / per-coin feed).
+    - Remaining items (HackerNews keyword search) pass only if title or body
+      contains a crypto-context term.
     """
-    trusted = {_normalize_subreddit(s) for s in trusted_subreddits}
     out: list[Item] = []
     for it in items:
-        if it.source == "polymarket":
+        if it.source in ("polymarket", "rss"):
             out.append(it)
             continue
-        if it.source == "reddit":
-            sub = _normalize_subreddit(it.metadata.get("subreddit") or "")
-            if sub and sub in trusted:
-                out.append(it)
-                continue
         if is_crypto_related(it.title, it.text):
             out.append(it)
     return out

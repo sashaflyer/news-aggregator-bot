@@ -311,7 +311,7 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
     # before they consume ranking budget or LLM tokens.
     if topic.kind == "watchlist":
         before = len(items)
-        items = filter_crypto_watchlist_items(items, topic.subreddits)
+        items = filter_crypto_watchlist_items(items)
         dropped = before - len(items)
         if dropped:
             log.info("watchlist relevance filter: dropped %d off-topic items; %d remain",
