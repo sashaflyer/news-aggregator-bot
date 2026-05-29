@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 
 # The set of source registry keys understood by the pipeline. Kept in sync
 # with aggregator.pipeline.SOURCES — adding a source means updating both.
-_KNOWN_SOURCES = {"reddit", "polymarket", "hackernews"}
+_KNOWN_SOURCES = {"reddit", "rss", "polymarket", "hackernews"}
 
 # Prompt template filenames are constrained to a safe character class so a
 # config writer cannot escape PROMPTS_DIR via path-traversal sequences.

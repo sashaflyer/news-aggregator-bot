@@ -13,6 +13,7 @@ from aggregator.sources.base import Item, Source
 from aggregator.sources.hn import HnSource
 from aggregator.sources.polymarket import PolymarketSource
 from aggregator.sources.reddit import RedditSource
+from aggregator.sources.rss import RssSource
 from aggregator.storage import Storage
 from aggregator.relevance import filter_crypto_watchlist_items
 from aggregator.synth import synthesize_async
@@ -38,6 +39,7 @@ SOURCES: dict[str, Source] = {
     "reddit": RedditSource(),
     "polymarket": PolymarketSource(),
     "hackernews": HnSource(),
+    "rss": RssSource(),
 }
 
 

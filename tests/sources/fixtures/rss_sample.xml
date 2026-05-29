@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Crypto Feed</title>
+    <link>https://example.com</link>
+    <item>
+      <title>Bitcoin ETF inflows hit record high</title>
+      <link>https://example.com/news/btc-etf</link>
+      <guid>https://example.com/news/btc-etf</guid>
+      <description>Spot bitcoin ETFs saw record inflows this week.</description>
+      <pubDate>Thu, 28 May 2026 18:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Solana network upgrade ships</title>
+      <link>https://example.com/news/sol-upgrade</link>
+      <guid>https://example.com/news/sol-upgrade</guid>
+      <description>The Solana upgrade improves throughput.</description>
+      <pubDate>Wed, 27 May 2026 09:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Undated draft item</title>
+      <link>https://example.com/news/undated</link>
+      <guid>https://example.com/news/undated</guid>
+      <description>No pubDate present.</description>
+    </item>
+  </channel>
+</rss>
