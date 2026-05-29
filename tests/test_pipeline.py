@@ -165,7 +165,8 @@ def test_cap_per_symbol_enforces_per_ticker_limit():
                     text="", created_at=now, engagement_raw={}, metadata={})
     items = [_mk(f"SOL news {i}", f"a{i}") for i in range(30)] + \
             [_mk("AVAX rises", "b1")]
-    out = pipeline._cap_per_symbol(items, symbols=["SOL", "SUI", "AVAX"], per_symbol_top_n=5)
+    alias_map = {"sol": "SOL", "sui": "SUI", "avax": "AVAX"}
+    out = pipeline._cap_per_symbol(items, ["SOL", "SUI", "AVAX"], alias_map, 5)
     sol = [it for it in out if "SOL" in it.title]
     avax = [it for it in out if "AVAX" in it.title]
     assert len(sol) == 5
@@ -596,3 +597,28 @@ def test_per_author_cap_preserves_engagement_order():
     out = pipeline._apply_per_author_cap(items, cap=2)
     kept_ids = [it.id for it in out]
     assert kept_ids == ["r:hi", "r:mid"]  # lowest dropped
+
+
+def _wl_item(source, title, *, tag=None):
+    from datetime import datetime, timezone
+    from aggregator.sources.base import Item
+    return Item(id=f"{source}:{title}", source=source, title=title, url="u", text="",
+                created_at=datetime(2026, 5, 28, tzinfo=timezone.utc),
+                engagement_raw={"score": 5},
+                metadata=({"watchlist_symbol": tag} if tag else {}))
+
+
+def test_cap_per_symbol_uses_metadata_tag():
+    from aggregator.pipeline import _cap_per_symbol
+    it = _wl_item("rss", "Solana network upgrade ships", tag="SOL")  # no "SOL" token in title
+    alias_map = {"sol": "SOL", "solana": "SOL", "arb": "ARB", "arbitrum": "ARB"}
+    out = _cap_per_symbol([it], ["SOL", "ARB"], alias_map, 5)
+    assert out == [it]
+
+
+def test_cap_per_symbol_matches_alias_text():
+    from aggregator.pipeline import _cap_per_symbol
+    it = _wl_item("hackernews", "Avalanche subnet launches")  # alias, no AVAX ticker
+    alias_map = {"avax": "AVAX", "avalanche": "AVAX"}
+    out = _cap_per_symbol([it], ["AVAX"], alias_map, 5)
+    assert out == [it]

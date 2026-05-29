@@ -149,31 +149,39 @@ async def _enrich_reddit_items(items: list[Item]) -> list[Item]:
 
 
 def _cap_per_symbol(
-    items: list[Item], symbols: list[str], per_symbol_top_n: int
+    items: list[Item],
+    canonical_symbols: list[str],
+    alias_map: dict[str, str],
+    per_symbol_top_n: int,
 ) -> list[Item]:
-    """Group items by best-matching canonical ticker (case-insensitive
-    word-boundary in title or body); keep at most ``per_symbol_top_n`` per
-    ticker. Off-topic items (no matching ticker) are dropped.
+    """Group items by canonical ticker; keep at most ``per_symbol_top_n`` each.
 
-    The first symbol in `symbols` to match an item wins, so callers should
-    order `symbols` by priority. Within each bucket, input order is preserved
-    (so a pre-ranked input yields a pre-ranked output per ticker).
+    Bucketing per item: an explicit ``metadata["watchlist_symbol"]`` (set by a
+    per-coin RSS feed) wins; otherwise the first ``alias_map`` key (ticker or
+    alias) matching title/body by word-boundary picks the canonical ticker.
+    ``alias_map`` maps ``lower(ticker|alias) -> canonical ticker``. Items that
+    match nothing are dropped. Bucket output follows ``canonical_symbols`` order.
     """
     import re as _re
-    buckets: dict[str, list[Item]] = {sym: [] for sym in symbols}
+    buckets: dict[str, list[Item]] = {sym: [] for sym in canonical_symbols}
+    canon_lower = {s.lower(): s for s in canonical_symbols}
     for it in items:
-        text = f"{it.title} {it.text or ''}".lower()
         matched = None
-        for sym in symbols:
-            if _re.search(rf"\b{_re.escape(sym.lower())}\b", text):
-                matched = sym
-                break
+        tag = (it.metadata.get("watchlist_symbol") or "").strip().lower()
+        if tag and tag in canon_lower:
+            matched = canon_lower[tag]
+        else:
+            text = f"{it.title} {it.text or ''}".lower()
+            for alias_lower, canon in alias_map.items():
+                if _re.search(rf"\b{_re.escape(alias_lower)}\b", text):
+                    matched = canon
+                    break
         if matched is None:
             continue
         if len(buckets[matched]) < per_symbol_top_n:
             buckets[matched].append(it)
     out: list[Item] = []
-    for sym in symbols:
+    for sym in canonical_symbols:
         out.extend(buckets[sym])
     return out
 
@@ -321,8 +329,13 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         ranked = _score_and_dedup(
             items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
         )
+        alias_map: dict[str, str] = {}
+        for w in topic.watch:
+            alias_map[w.ticker.lower()] = w.ticker
+            for a in w.aliases:
+                alias_map.setdefault(a.lower(), w.ticker)
         ranked = _cap_per_symbol(
-            ranked, topic.canonical_symbols, topic.per_symbol_top_n,  # type: ignore[arg-type]
+            ranked, topic.canonical_symbols, alias_map, topic.per_symbol_top_n,  # type: ignore[arg-type]
         )
 
     # Enrich top Reddit items with comments so the LLM has the actual context.
