@@ -329,6 +329,10 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         ranked = _score_and_dedup(
             items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
         )
+        # Build {lower(ticker|alias) -> canonical ticker}. Watch config is
+        # operator-authored and trusted: on a duplicate alias the first-registered
+        # entry wins (ticker keys take precedence over aliases via direct assign +
+        # setdefault). We don't guard against cross-coin alias collisions.
         alias_map: dict[str, str] = {}
         for w in topic.watch:
             alias_map[w.ticker.lower()] = w.ticker

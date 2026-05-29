@@ -608,12 +608,19 @@ def _wl_item(source, title, *, tag=None):
                 metadata=({"watchlist_symbol": tag} if tag else {}))
 
 
-def test_cap_per_symbol_uses_metadata_tag():
+def test_cap_per_symbol_metadata_tag_overrides_conflicting_alias():
     from aggregator.pipeline import _cap_per_symbol
-    it = _wl_item("rss", "Solana network upgrade ships", tag="SOL")  # no "SOL" token in title
-    alias_map = {"sol": "SOL", "solana": "SOL", "arb": "ARB", "arbitrum": "ARB"}
-    out = _cap_per_symbol([it], ["SOL", "ARB"], alias_map, 5)
-    assert out == [it]
+    # `tagged`: title text matches the AVAX alias, but metadata tags it SOL.
+    # `untagged`: title text matches the AVAX alias, no metadata tag.
+    tagged = _wl_item("rss", "Avalanche announces partnership", tag="SOL")
+    untagged = _wl_item("hackernews", "Avalanche subnet launches")
+    alias_map = {"sol": "SOL", "solana": "SOL", "avax": "AVAX", "avalanche": "AVAX"}
+    # Input order: untagged first. If metadata wins, tagged -> SOL bucket, untagged -> AVAX
+    # bucket, and output (ordered by canonical [SOL, AVAX]) is [tagged, untagged].
+    # If metadata were IGNORED, both -> AVAX bucket and output would be input order
+    # [untagged, tagged]. So this assertion distinguishes the two.
+    out = _cap_per_symbol([untagged, tagged], ["SOL", "AVAX"], alias_map, per_symbol_top_n=5)
+    assert out == [tagged, untagged]
 
 
 def test_cap_per_symbol_matches_alias_text():
