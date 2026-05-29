@@ -21,3 +21,6 @@ docs/superpowers/
 .vscode/
 .idea/
 *.swp
+
+# Claude Code local harness
+.claude/

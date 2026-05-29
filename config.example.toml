@@ -54,6 +54,11 @@ schedule = "10 8,20 * * *"
   aliases = ["Avalanche"]
   feeds = ["https://cointelegraph.com/rss/tag/avalanche"]
 
+  [[topics.crypto_watchlist.watch]]
+  ticker = "ARB"
+  aliases = ["Arbitrum"]
+  feeds = ["https://cointelegraph.com/rss/tag/arbitrum"]
+
 [topics.ai_general]
 kind = "general"
 sources = ["polymarket", "hackernews"]
