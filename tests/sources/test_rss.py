@@ -61,6 +61,33 @@ async def test_symbol_feeds_tag_items_and_skip_filter():
 
 
 @pytest.mark.asyncio
+async def test_search_feeds_alias_filter_and_tag():
+    # Search-feed items are tagged with the symbol AND alias-filtered: only
+    # entries mentioning the symbol's terms survive (unlike trusted symbol feeds).
+    with patch("aggregator.sources.rss._fetch_feed", return_value=_entries()):
+        items = await RssSource().fetch({
+            "rss_search_feeds": [
+                {"symbol": "SOL", "terms": ["SOL", "Solana"],
+                 "url": "https://news.google.com/rss/search?q=Solana"},
+            ],
+        })
+    assert len(items) == 1  # BTC item dropped by alias filter, undated dropped
+    assert "Solana" in items[0].title
+    assert items[0].metadata["watchlist_symbol"] == "SOL"
+
+
+@pytest.mark.asyncio
+async def test_search_feed_fetch_failure_is_skipped():
+    with patch("aggregator.sources.rss._fetch_feed", side_effect=RuntimeError("boom")):
+        items = await RssSource().fetch({
+            "rss_search_feeds": [
+                {"symbol": "SOL", "terms": ["SOL", "Solana"], "url": "https://x/gnews"},
+            ],
+        })
+    assert items == []
+
+
+@pytest.mark.asyncio
 async def test_no_feeds_returns_empty():
     assert await RssSource().fetch({}) == []
 

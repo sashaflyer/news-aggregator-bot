@@ -14,7 +14,7 @@
 
 ---
 
-Built for personal use: one operator, one Telegram chat, one Linux VPS, fully config-driven topics. The defaults ship with crypto news, a **SOL / SUI / AVAX / ARB** watchlist, and AI/ML news — but adding a new digest stream is a config-only change, with zero code.
+Built for personal use: one operator, one Telegram chat, one Linux VPS, fully config-driven topics. The defaults ship with crypto news, a **SOL / SUI / AVAX / ENA** watchlist, and AI/ML news — but adding a new digest stream is a config-only change, with zero code.
 
 ## Contents
 
@@ -149,6 +149,8 @@ schedule = "5 5,17 * * *"          # 05:05 & 17:05 in [schedule].timezone
 [topics.crypto_watchlist]
 kind = "watchlist"
 sources = ["rss", "polymarket", "hackernews"]
+rss_feeds = [ ... ]                # same 4 broad outlets as crypto_general, symbol-filtered
+polymarket_tags = ["crypto"]       # filtered down to the watched symbols
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "10 5,17 * * *"
@@ -156,22 +158,17 @@ schedule = "10 5,17 * * *"
   [[topics.crypto_watchlist.watch]]
   ticker = "SOL"
   aliases = ["Solana"]
-  feeds = ["https://cointelegraph.com/rss/tag/solana"]
+  feeds = ["https://cointelegraph.com/rss/tag/solana"]        # curated tag feed (trusted, unfiltered)
+  # Google News scoped to reputable outlets, alias-filtered to this symbol:
+  search_feeds = ["https://news.google.com/rss/search?q=Solana%20(site%3Acointelegraph.com%20OR%20site%3Atheblock.co%20OR%20site%3Adecrypt.co%20OR%20site%3Acryptoslate.com)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
+  # SUI / AVAX / ENA follow the same shape, each `search_feeds` swapping in its
+  # own keyword. ENA has no Cointelegraph tag, so its `feeds` uses CryptoSlate:
   [[topics.crypto_watchlist.watch]]
-  ticker = "SUI"
-  aliases = ["Sui Network"]
-  feeds = ["https://cointelegraph.com/rss/tag/sui"]
-
-  [[topics.crypto_watchlist.watch]]
-  ticker = "AVAX"
-  aliases = ["Avalanche"]
-  feeds = ["https://cointelegraph.com/rss/tag/avalanche"]
-
-  [[topics.crypto_watchlist.watch]]
-  ticker = "ARB"
-  aliases = ["Arbitrum"]
-  feeds = ["https://cointelegraph.com/rss/tag/arbitrum"]
+  ticker = "ENA"
+  aliases = ["Ethena"]
+  feeds = ["https://cryptoslate.com/news/ethena/feed/"]
+  search_feeds = ["https://news.google.com/rss/search?q=Ethena%20(site%3A...)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
 [topics.ai_general]
 kind = "general"

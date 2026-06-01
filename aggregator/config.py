@@ -59,6 +59,7 @@ class WatchEntry(BaseModel):
     ticker: str
     aliases: list[str] = Field(default_factory=list)
     feeds: list[str] = Field(default_factory=list)
+    search_feeds: list[str] = Field(default_factory=list)
 
     @field_validator("ticker")
     @classmethod
@@ -79,6 +80,11 @@ class WatchEntry(BaseModel):
     @field_validator("feeds")
     @classmethod
     def _v_feeds(cls, v: list[str]) -> list[str]:
+        return _strip_nonempty_list(v)
+
+    @field_validator("search_feeds")
+    @classmethod
+    def _v_search_feeds(cls, v: list[str]) -> list[str]:
         return _strip_nonempty_list(v)
 
 

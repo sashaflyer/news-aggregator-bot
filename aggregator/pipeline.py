@@ -182,6 +182,10 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         "hn_keywords": topic.hn_keywords,
         "rss_feeds": topic.rss_feeds,
         "rss_symbol_feeds": {w.ticker: w.feeds for w in topic.watch if w.feeds},
+        "rss_search_feeds": [
+            {"symbol": w.ticker, "terms": [w.ticker, *w.aliases], "url": u}
+            for w in topic.watch for u in w.search_feeds
+        ],
         "symbols": topic.query_symbols,
     }
 

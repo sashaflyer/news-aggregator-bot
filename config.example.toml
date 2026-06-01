@@ -35,6 +35,15 @@ schedule = "5 8,20 * * *"
 [topics.crypto_watchlist]
 kind = "watchlist"
 sources = ["rss", "polymarket", "hackernews"]
+# Broad outlets, symbol-filtered: catches any watched symbol mentioned across
+# the major outlets, including symbols with no per-coin tag feed.
+rss_feeds = [
+  "https://cointelegraph.com/rss",
+  "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml",
+  "https://decrypt.co/feed",
+  "https://www.theblock.co/rss.xml",
+]
+polymarket_tags = ["crypto"]
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
 schedule = "10 8,20 * * *"
@@ -43,21 +52,25 @@ schedule = "10 8,20 * * *"
   ticker = "SOL"
   aliases = ["Solana"]
   feeds = ["https://cointelegraph.com/rss/tag/solana"]
+  search_feeds = ["https://news.google.com/rss/search?q=Solana%20(site%3Acointelegraph.com%20OR%20site%3Atheblock.co%20OR%20site%3Adecrypt.co%20OR%20site%3Acryptoslate.com)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
   [[topics.crypto_watchlist.watch]]
   ticker = "SUI"
   aliases = ["Sui Network"]
   feeds = ["https://cointelegraph.com/rss/tag/sui"]
+  search_feeds = ["https://news.google.com/rss/search?q=Sui%20(site%3Acointelegraph.com%20OR%20site%3Atheblock.co%20OR%20site%3Adecrypt.co%20OR%20site%3Acryptoslate.com)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
   [[topics.crypto_watchlist.watch]]
   ticker = "AVAX"
   aliases = ["Avalanche"]
   feeds = ["https://cointelegraph.com/rss/tag/avalanche"]
+  search_feeds = ["https://news.google.com/rss/search?q=Avalanche%20(site%3Acointelegraph.com%20OR%20site%3Atheblock.co%20OR%20site%3Adecrypt.co%20OR%20site%3Acryptoslate.com)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
   [[topics.crypto_watchlist.watch]]
-  ticker = "ARB"
-  aliases = ["Arbitrum"]
-  feeds = ["https://cointelegraph.com/rss/tag/arbitrum"]
+  ticker = "ENA"
+  aliases = ["Ethena"]
+  feeds = ["https://cryptoslate.com/news/ethena/feed/"]
+  search_feeds = ["https://news.google.com/rss/search?q=Ethena%20(site%3Acointelegraph.com%20OR%20site%3Atheblock.co%20OR%20site%3Adecrypt.co%20OR%20site%3Acryptoslate.com)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"]
 
 [topics.ai_general]
 kind = "general"

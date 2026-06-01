@@ -246,6 +246,30 @@ def test_topic_config_rejects_nonsense_cron():
     assert "schedule" in str(exc.value).lower() or "cron" in str(exc.value).lower()
 
 
+def test_watch_entry_accepts_search_feeds():
+    from aggregator.config import WatchEntry
+    w = WatchEntry(ticker="ENA", aliases=["Ethena"],
+                   search_feeds=["https://news.google.com/rss/search?q=Ethena"])
+    assert w.search_feeds == ["https://news.google.com/rss/search?q=Ethena"]
+
+
+def test_watch_search_feeds_validates_nonempty_strings(tmp_path):
+    cfg_path = write_toml(tmp_path, _BASE_SECTIONS + """
+[topics.t]
+kind = "watchlist"
+sources = ["rss"]
+prompt_template = "watchlist.md"
+per_symbol_top_n = 5
+schedule = "0 8 * * *"
+
+  [[topics.t.watch]]
+  ticker = "SOL"
+  search_feeds = [""]
+""")
+    with pytest.raises(ValueError):
+        load_config(cfg_path)
+
+
 def test_watch_entry_rejects_whitespace_ticker():
     from aggregator.config import WatchEntry
     with pytest.raises(ValidationError):

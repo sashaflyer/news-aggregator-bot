@@ -3,7 +3,8 @@
 Drives crypto_general (untagged broad feeds, optionally symbol-filtered) and
 crypto_watchlist (per-coin tag feeds via ``rss_symbol_feeds``: items get tagged
 ``metadata["watchlist_symbol"]`` and are not filtered, since the feed is the
-curation).
+curation). Per-symbol *search* feeds via ``rss_search_feeds`` are also tagged
+but alias-filtered by the symbol's own terms (a keyword search is not curation).
 
 RSS has no engagement signal, so each item gets a recency pseudo-score in
 ``engagement_raw["score"]`` (newer -> higher).
@@ -120,5 +121,23 @@ class RssSource(Source):
                 for r in raws:
                     it = _to_item(r, now=now, symbol=sym)
                     if it is not None:
+                        items.append(it)
+
+        # Per-symbol *search* feeds (e.g. Google News queries): tagged like
+        # symbol feeds, but alias-filtered by the symbol's own terms because a
+        # keyword search is not the curation a real outlet tag feed is.
+        search_feeds = queries.get("rss_search_feeds") or []
+        if search_feeds:
+            results = await asyncio.gather(
+                *(asyncio.to_thread(_fetch_feed, e["url"]) for e in search_feeds),
+                return_exceptions=True,
+            )
+            for e, raws in zip(search_feeds, results):
+                if isinstance(raws, Exception):
+                    log.warning("rss search feed fetch failed (%s): %s", e["symbol"], raws)
+                    continue
+                for r in raws:
+                    it = _to_item(r, now=now, symbol=e["symbol"])
+                    if it is not None and _matches_any_symbol(it, e["terms"]):
                         items.append(it)
         return items

@@ -478,12 +478,12 @@ def test_cap_per_symbol_matches_alias_text():
 @pytest.mark.asyncio
 async def test_run_digest_watchlist_rss_symbol_feeds(cfg, storage):
     """run_digest for crypto_watchlist must call _fetch_feed with the configured
-    per-coin tag-feed URLs (rss_symbol_feeds) and deliver tagged items.
+    per-coin tag-feed URLs (rss_symbol_feeds) AND per-symbol search-feed URLs
+    (rss_search_feeds), and deliver tagged items.
 
-    Failure mode caught: if the key 'rss_symbol_feeds' were misspelled in
-    pipeline.run_digest (e.g. 'rss_symbl_feeds'), RssSource.fetch would see an
-    empty symbol_feeds dict, _fetch_feed would never be called for the tag-feed
-    URLs, and this test would fail on the assert_any_call checks AND on
+    Failure mode caught: if either key were misspelled in pipeline.run_digest,
+    RssSource.fetch would see empty inputs, _fetch_feed would never be called for
+    those URLs, and this test would fail on the called_urls checks AND on
     items_delivered == 0.
     """
     import time
@@ -510,12 +510,21 @@ async def test_run_digest_watchlist_rss_symbol_feeds(cfg, storage):
              "url": "https://ct.com/avax-1", "summary": "New subnet launches.",
              "published_parsed": _recent},
         ],
-        "https://cointelegraph.com/rss/tag/arbitrum": [
-            {"id": "arb-1", "title": "Arbitrum DAO vote passes",
-             "url": "https://ct.com/arb-1", "summary": "ARB governance milestone.",
+        "https://cryptoslate.com/news/ethena/feed/": [
+            {"id": "ena-1", "title": "Ethena USDe supply hits record",
+             "url": "https://cs.com/ena-1", "summary": "Ethena USDe milestone.",
              "published_parsed": _recent},
         ],
     }
+
+    # Per-symbol Google News search feed for SOL (exact URL taken from config so
+    # the assertion below proves the rss_search_feeds wiring, not a hardcode).
+    _sol_search = cfg.topics["crypto_watchlist"].watch[0].search_feeds[0]
+    _FEED_ENTRIES[_sol_search] = [
+        {"id": "sol-gn-1", "title": "Solana ETF filing reported",
+         "url": "https://gn.com/sol-gn-1", "summary": "Solana ETF news.",
+         "published_parsed": _recent},
+    ]
 
     def fake_fetch_feed(url: str) -> list[dict]:
         return _FEED_ENTRIES.get(url, [])
@@ -533,18 +542,21 @@ async def test_run_digest_watchlist_rss_symbol_feeds(cfg, storage):
     # Run must succeed.
     assert result.status == "ok"
 
-    # _fetch_feed must have been called with the SOL and ARB tag-feed URLs.
-    # This directly verifies the rss_symbol_feeds key is spelled correctly in
-    # pipeline.run_digest and that RssSource.fetch receives and processes it.
+    # _fetch_feed must have been called with the SOL/ENA tag-feed URLs and the
+    # SOL search-feed URL. This verifies the rss_symbol_feeds and rss_search_feeds
+    # keys are spelled correctly in pipeline.run_digest and reach RssSource.fetch.
     called_urls = {call.args[0] for call in mock_ff.call_args_list}
     assert "https://cointelegraph.com/rss/tag/solana" in called_urls, (
         "SOL tag feed was not fetched — rss_symbol_feeds wiring likely broken"
     )
-    assert "https://cointelegraph.com/rss/tag/arbitrum" in called_urls, (
-        "ARB tag feed was not fetched — rss_symbol_feeds wiring likely broken"
+    assert "https://cryptoslate.com/news/ethena/feed/" in called_urls, (
+        "ENA tag feed was not fetched — rss_symbol_feeds wiring likely broken"
+    )
+    assert _sol_search in called_urls, (
+        "SOL search feed was not fetched — rss_search_feeds wiring likely broken"
     )
 
     # Items from the per-coin feeds must have flowed through to delivery.
     assert result.items_delivered >= 2, (
-        f"Expected at least SOL+ARB items delivered, got {result.items_delivered}"
+        f"Expected at least SOL+ENA items delivered, got {result.items_delivered}"
     )

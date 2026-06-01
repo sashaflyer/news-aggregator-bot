@@ -175,7 +175,7 @@ class Storage:
                 "prompt_template": "general_crypto.md",
                 "polymarket_tags": [...], "hn_keywords": [...],
                 "rss_feeds": [...],
-                "watch": [{"ticker": "SOL", "aliases": ["Solana"], "feeds": [...]}, ...]
+                "watch": [{"ticker": "SOL", "aliases": ["Solana"], "feeds": [...], "search_feeds": [...]}, ...]
             }
 
         Consumers (pipeline, synth) decode this back from the row when needed.
@@ -189,7 +189,8 @@ class Storage:
                 "hn_keywords": list(topic.hn_keywords),
                 "rss_feeds": list(topic.rss_feeds),
                 "watch": [
-                    {"ticker": w.ticker, "aliases": list(w.aliases), "feeds": list(w.feeds)}
+                    {"ticker": w.ticker, "aliases": list(w.aliases),
+                     "feeds": list(w.feeds), "search_feeds": list(w.search_feeds)}
                     for w in topic.watch
                 ],
             })

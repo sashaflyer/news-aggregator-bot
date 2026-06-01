@@ -127,7 +127,8 @@ def _sample_topics() -> dict[str, TopicConfig]:
             sources=["rss"],
             watch=[
                 WatchEntry(ticker="SOL", aliases=["Solana"],
-                           feeds=["https://cointelegraph.com/rss/tag/solana"]),
+                           feeds=["https://cointelegraph.com/rss/tag/solana"],
+                           search_feeds=["https://news.google.com/rss/search?q=Solana"]),
                 WatchEntry(ticker="SUI"),
             ],
             prompt_template="watchlist.md",
@@ -168,8 +169,9 @@ def test_seed_topics_persists_query_payload(storage):
     assert w["kind"] == "watchlist"
     assert w["watch"] == [
         {"ticker": "SOL", "aliases": ["Solana"],
-         "feeds": ["https://cointelegraph.com/rss/tag/solana"]},
-        {"ticker": "SUI", "aliases": [], "feeds": []},
+         "feeds": ["https://cointelegraph.com/rss/tag/solana"],
+         "search_feeds": ["https://news.google.com/rss/search?q=Solana"]},
+        {"ticker": "SUI", "aliases": [], "feeds": [], "search_feeds": []},
     ]
 
 
