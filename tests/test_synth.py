@@ -149,6 +149,61 @@ def test_synthesize_escapes_html_in_titles_and_text(cfg):
     assert '<a href="https://evil.example">' not in user_msg
 
 
+def test_synthesize_does_not_overescape_apostrophes(cfg):
+    """Apostrophes/quotes in body text must NOT be escaped to &#x27;/&quot; —
+    they're not in HTML attributes, and Telegram renders them as literal noise.
+    """
+    from aggregator import synth
+
+    items = [{
+        "id": "rss:1", "source": "rss", "title": "Ethena's USDe supply grows",
+        "url": "https://x/1", "text": "It's up.",
+        "created_at": "2026-05-24T00:00:00+00:00",
+        "engagement_raw": {}, "metadata": {},
+    }]
+    fake_resp = MagicMock()
+    fake_resp.choices = [MagicMock(message=MagicMock(content="ok"))]
+    fake_resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_resp
+
+    with patch.object(synth, "_get_client", return_value=fake_client):
+        synth.synthesize("crypto_general", items, cfg=cfg)
+
+    user_msg = fake_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert "Ethena's USDe" in user_msg
+    assert "&#x27;" not in user_msg
+
+
+def test_synthesize_projects_items_to_minimal_fields(cfg):
+    """The LLM payload should carry only the fields it uses (source/title/text/url,
+    plus watchlist_symbol when present) — not id/engagement_raw/created_at/metadata.
+    """
+    from aggregator import synth
+
+    items = [{
+        "id": "rss:abc", "source": "rss", "title": "SOL news", "url": "https://x/1",
+        "text": "body", "created_at": "2026-05-24T00:00:00+00:00",
+        "engagement_raw": {"score": 187.3},
+        "metadata": {"watchlist_symbol": "SOL", "author": "x"},
+    }]
+    fake_resp = MagicMock()
+    fake_resp.choices = [MagicMock(message=MagicMock(content="ok"))]
+    fake_resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_resp
+
+    with patch.object(synth, "_get_client", return_value=fake_client):
+        synth.synthesize("crypto_watchlist", items, cfg=cfg)
+
+    user_msg = fake_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    payload = json.loads(user_msg.split("ITEMS (JSON):\n", 1)[1])
+    assert set(payload[0].keys()) == {"source", "title", "text", "url", "watchlist_symbol"}
+    assert payload[0]["watchlist_symbol"] == "SOL"
+    assert "engagement_raw" not in user_msg
+    assert "rss:abc" not in user_msg  # raw id dropped
+
+
 def test_synthesize_raises_on_empty_content(cfg, items):
     """Empty LLM output must NOT be silently delivered; raise instead so the
     pipeline doesn't mark every ranked item as delivered for a blank message.

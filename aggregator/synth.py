@@ -58,12 +58,37 @@ def _sanitize_for_html(item_dict: dict[str, Any]) -> dict[str, Any]:
 
     URLs are not escaped — they need to remain valid hrefs; Telegram itself
     blocks ``javascript:``/``data:`` schemes.
+
+    ``quote=False``: title/text become body text in the digest, never attribute
+    values, so escaping ``'`` and ``"`` to ``&#x27;``/``&quot;`` would only inject
+    entity noise. Escaping ``<``, ``>``, ``&`` (the parser-significant ones) is
+    enough to neutralize injected tags.
     """
     out = dict(item_dict)
     for key in ("title", "text"):
         val = out.get(key)
         if isinstance(val, str) and val:
-            out[key] = html.escape(val, quote=True)
+            out[key] = html.escape(val, quote=False)
+    return out
+
+
+# Fields the LLM actually uses. Dropping id/engagement_raw/created_at/metadata
+# trims input tokens (up to max_input_items per run) and removes misleading
+# signals (RSS "engagement" is a recency score, not votes).
+_LLM_FIELDS = ("source", "title", "text", "url")
+
+
+def _project_for_llm(item_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a slim item carrying only the fields the prompt consumes.
+
+    Hoists ``metadata["watchlist_symbol"]`` to a top-level key so the watchlist
+    prompt can bucket by it directly (it is the authoritative assignment from
+    ``_cap_per_symbol``).
+    """
+    out = {k: item_dict[k] for k in _LLM_FIELDS if k in item_dict}
+    sym = (item_dict.get("metadata") or {}).get("watchlist_symbol")
+    if sym:
+        out["watchlist_symbol"] = sym
     return out
 
 
@@ -122,7 +147,9 @@ def _build_messages(topic_id: str, items: list[dict[str, Any]], cfg: Config) -> 
     """
     topic = cfg.topics[topic_id]
     system = load_prompt(topic.prompt_template)
-    items_json = json.dumps(items, ensure_ascii=False, indent=2)
+    # Compact separators (no indent/whitespace) — saves input tokens across the
+    # up-to-max_input_items array; the model parses compact JSON fine.
+    items_json = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
     if topic.kind == "watchlist":
         user = f"SYMBOLS: {_format_watch_symbols(topic)}\n\nITEMS (JSON):\n{items_json}"
     else:
@@ -139,7 +166,8 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
     query = _query_for_topic(topic_id, cfg)
     shortened = [_shorten_body(it, query) for it in capped]
     sanitized = [_sanitize_for_html(it) for it in shortened]
-    messages = _build_messages(topic_id, sanitized, cfg)
+    projected = [_project_for_llm(it) for it in sanitized]
+    messages = _build_messages(topic_id, projected, cfg)
     total_chars = sum(len(m["content"]) for m in messages)
     log.info("synth topic=%s items=%d prompt_chars=%d",
              topic_id, len(capped), total_chars)
@@ -168,10 +196,13 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
     # successful call just because the metrics aren't present.
     usage = getattr(resp, "usage", None)
     if usage is not None:
-        log.info("synth done tokens=%s/%s/%s",
+        cached = getattr(getattr(usage, "prompt_tokens_details", None),
+                         "cached_tokens", None)
+        log.info("synth done tokens=%s/%s/%s cached=%s",
                  getattr(usage, "prompt_tokens", "?"),
                  getattr(usage, "completion_tokens", "?"),
-                 getattr(usage, "total_tokens", "?"))
+                 getattr(usage, "total_tokens", "?"),
+                 cached if cached is not None else "?")
     else:
         log.info("synth done (usage unavailable)")
 

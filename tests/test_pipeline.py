@@ -471,6 +471,19 @@ def test_cap_per_symbol_matches_alias_text():
     assert out == [it]
 
 
+def test_cap_per_symbol_stamps_canonical_symbol():
+    # Items bucketed by alias text-match (no incoming watchlist_symbol) must be
+    # stamped with their canonical bucket so the synth prompt can trust it.
+    from aggregator.pipeline import _cap_per_symbol
+    untagged = _wl_item("rss", "Avalanche subnet launches")  # AVAX via alias
+    tagged = _wl_item("rss", "Opaque title", tag="SOL")      # SOL via feed tag
+    alias_map = {"sol": "SOL", "avax": "AVAX", "avalanche": "AVAX"}
+    out = _cap_per_symbol([untagged, tagged], ["SOL", "AVAX"], alias_map, 5)
+    stamped = {it.id: it.metadata["watchlist_symbol"] for it in out}
+    assert stamped[untagged.id] == "AVAX"
+    assert stamped[tagged.id] == "SOL"
+
+
 # ---------------------------------------------------------------------------
 # End-to-end: run_digest for crypto_watchlist exercises rss_symbol_feeds wiring
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ FORMATTING RULES (critical):
 HTML CHARACTER RULES (critical for Telegram's parser):
 
 - The ONLY HTML tags you may emit are `<b>...</b>` and `<a href="...">...</a>`. Do not use any other tags (no `<i>`, `<u>`, `<code>`, `<br>`, etc.).
-- Do NOT emit raw `<`, `>`, or `&` characters anywhere in body text. If a source item's title contains one, REWRITE it: e.g., "BTC < $200K" becomes "BTC under $200K"; "AT&T" becomes "AT and T"; "context length > 1M" becomes "context length over 1M".
+- Source titles and bodies arrive already HTML-escaped (you will see `&amp;`, `&lt;`, `&gt;`). Pass those entities through unchanged — Telegram decodes them to `&`, `<`, `>`. In your OWN prose, never emit a raw `<`, `>`, or `&`: write comparisons in words ("BTC under $200K", "context length over 1M") and use "and" instead of `&` ("AT and T").
 - Use plain ASCII hyphens inside sentences when needed. Never em-dashes.
 - URLs inside `href="..."` must be raw URLs (no HTML-encoding of `&` inside the URL — Telegram handles that). Just ensure the URL is well-formed.
 
@@ -22,4 +22,3 @@ CONTENT RULES (universal):
 - If a claim cannot be verified from the item's own fields, either omit it or hedge it ("reportedly", "according to OP"). Never assert.
 - Skip only obvious low-effort content (memes without substance, naked price-pump posts, rumors already refuted in the comments). The items reached this prompt because the upstream filter (engagement + dedup + per-author cap) rated them top; don't second-guess that ranking unless an item is clearly noise.
 - The input is already filtered to the top items. Use most of what survived — when a section permits a range of bullets, lean toward the upper end unless duplicate themes or obvious noise force fewer.
-- When an item's metadata includes `top_comments` or `comment_insights`, use them as additional context for what the post is about and how the community received it. Prefer phrasing that reflects community sentiment over the headline alone. Example: if a post's title is "New SOTA on benchmark X" but top comments find the benchmark cherry-picked, lead with the skepticism, not the headline.

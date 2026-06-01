@@ -88,6 +88,8 @@ def _cap_per_symbol(
     alias) matching title/body by word-boundary picks the canonical ticker.
     ``alias_map`` maps ``lower(ticker|alias) -> canonical ticker``. Items that
     match nothing are dropped. Bucket output follows ``canonical_symbols`` order.
+    Each kept item has ``metadata["watchlist_symbol"]`` stamped with its canonical
+    bucket so the synth prompt can group by that field instead of re-matching.
     """
     import re as _re
     buckets: dict[str, list[Item]] = {sym: [] for sym in canonical_symbols}
@@ -106,6 +108,9 @@ def _cap_per_symbol(
         if matched is None:
             continue
         if len(buckets[matched]) < per_symbol_top_n:
+            # Stamp the canonical bucket so downstream (synth prompt) can trust
+            # it directly instead of re-deriving buckets by text-matching.
+            it.metadata["watchlist_symbol"] = matched
             buckets[matched].append(it)
     out: list[Item] = []
     for sym in canonical_symbols:
