@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from aggregator.sources.rss import RssSource, _to_item, _fetch_feed
+from aggregator.sources import rss as rss_module
+from aggregator.sources.rss import RssSource, _to_item, _fetch_feed, _RECENCY_BASE
 
 FIXTURE = Path(__file__).parent / "fixtures" / "rss_sample.xml"
 
@@ -35,11 +36,21 @@ async def test_untagged_feed_maps_and_drops_undated():
 
 @pytest.mark.asyncio
 async def test_recency_score_newer_first():
-    with patch("aggregator.sources.rss._fetch_feed", return_value=_entries()):
+    fixed_now = datetime(2026, 5, 28, 20, 0, 0, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    with patch("aggregator.sources.rss._fetch_feed", return_value=_entries()), \
+         patch.object(rss_module, "datetime", FixedDateTime):
         items = await RssSource().fetch({"rss_feeds": ["https://x/feed"]})
     btc = next(it for it in items if "ETF" in it.title)
     sol = next(it for it in items if "Solana" in it.title)
     assert btc.engagement_raw["score"] > sol.engagement_raw["score"]
+    assert btc.engagement_raw["score"] == pytest.approx(_RECENCY_BASE - 2.0)
+    assert sol.engagement_raw["score"] == pytest.approx(_RECENCY_BASE - 35.0)
 
 
 @pytest.mark.asyncio
