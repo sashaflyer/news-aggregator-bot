@@ -77,6 +77,23 @@ sudo -u news-bot .venv/bin/pip install -e .
 sudo systemctl restart news-aggregator
 ```
 
+## Local development sync (Windows → VPS)
+
+`scripts/sync_vps.ps1` is a one-shot sync that pushes the local repo to `origin/main`, then on the VPS stashes any conflicting local edits, pulls, reinstalls, and restarts the service. It also shows pre-flight (commits behind, dirty working tree, missing config) and post-flight (scheduled topics, service health, journal tail) state.
+
+Requires Windows OpenSSH (`ssh.exe` on PATH) and a host key already trusted for the VPS. Run from a PowerShell prompt in the repo root:
+
+```powershell
+.\scripts\sync_vps.ps1
+```
+
+The script stashes VPS-side edits to a `pre-sync-<timestamp>` entry rather than discarding them. If the stash is shown in the post-flight output, review it and either drop (if it is a now-redundant pre-commit duplicate) or pop (if it is something you still need):
+
+```powershell
+ssh root@213.176.72.32 'sudo -u news-bot -H git -C /opt/news-aggregator stash show -p stash@{0}'
+ssh root@213.176.72.32 'sudo -u news-bot -H git -C /opt/news-aggregator stash drop'
+```
+
 ## Backing up
 
 The only stateful file is `/var/lib/news-aggregator/aggregator.db`. Snapshot it with your usual backup tool.
