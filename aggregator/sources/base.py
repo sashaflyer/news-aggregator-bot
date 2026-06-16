@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
 
-@dataclass
+@dataclass(frozen=True)
 class Item:
     id: str
     source: str
@@ -22,6 +22,16 @@ class Item:
         d = asdict(self)
         d["created_at"] = self.created_at.isoformat()
         return d
+
+    def with_metadata(self, **extra: Any) -> "Item":
+        """Return a copy of this item with `extra` merged into metadata.
+
+        `frozen=True` prevents the in-place mutation that previously made
+        items non-replayable across pipeline passes; callers that need to
+        stamp a new field (e.g. ``watchlist_symbol``) get a new instance
+        back, leaving the original untouched.
+        """
+        return replace(self, metadata={**self.metadata, **extra})
 
 
 class Source(ABC):

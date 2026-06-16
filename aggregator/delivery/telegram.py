@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from aggregator.config import Config
-from aggregator.delivery._html_filter import sanitize_outgoing
+from aggregator.delivery._html_filter import ALLOWED_TAGS, HTML_ENTITY_RE, sanitize_outgoing
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,56 @@ def _utf16_len(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
 
-def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
+def _find_safe_cut(text: str, hard_cut: int) -> int:
+    """Return a cut position in (0, hard_cut] that doesn't split an HTML entity
+    or an unclosed tag. Prefers the last </tag> in the window, then a paragraph
+    / line / sentence break. Returns hard_cut unchanged as a last resort.
+    """
+    if hard_cut >= len(text):
+        return len(text)
+    if hard_cut <= 0:
+        return hard_cut
+
+    # 1) Avoid splitting an HTML entity (e.g. &amp; / &#x27;) at the boundary.
+    for end in range(hard_cut, max(hard_cut - 32, 0), -1):
+        if text[end - 1] != ";":
+            continue
+        amp = text.rfind("&", 0, end)
+        if amp == -1:
+            continue
+        if HTML_ENTITY_RE.fullmatch(text[amp:end]):
+            continue
+        return end
+
+    # 2) Prefer the last </tag> in the window — keeps every chunk well-formed.
+    best: int | None = None
+    for tag in ALLOWED_TAGS:
+        close = text.rfind(f"</{tag}>", 0, hard_cut)
+        if close == -1:
+            continue
+        candidate = close + len(f"</{tag}>")
+        if best is None or candidate > best:
+            best = candidate
+    if best is not None and best > 0:
+        return best
+
+    # 3) Fall back to natural separators, then to hard_cut.
+    for sep in ("\n\n", "\n", ". "):
+        idx = text.rfind(sep, 0, hard_cut)
+        if idx > 0:
+            return idx + len(sep)
+    return hard_cut
+
+
+def _chunk_body(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
+    """Split `text` into chunks that each fit `limit` UTF-16 code units.
+
+    Returns *bodies only* — page counters are appended at send time so the
+    plain-text fallback (which strips parse_mode) doesn't render `<i>` as
+    literal text. Each chunk is HTML-safe by construction: cuts never split
+    an entity or an unclosed tag, so the downstream ``sanitize_outgoing``
+    can't silently delete text.
+    """
     if _utf16_len(text) <= limit:
         return [text]
     chunks: list[str] = []
@@ -43,22 +92,29 @@ def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> li
                 lo = mid
             else:
                 hi = mid - 1
-        cut = lo
-        # Walk back to a sensible boundary if one exists nearby.
-        for sep in ("\n\n", "\n", ". "):
-            idx = remaining.rfind(sep, 0, cut)
-            if idx > 0 and idx > cut - 200:
-                cut = idx + len(sep)
-                break
+        cut = _find_safe_cut(remaining, lo)
         chunks.append(remaining[:cut].rstrip())
         remaining = remaining[cut:].lstrip()
     if remaining:
         chunks.append(remaining)
-    total = len(chunks)
-    # HTML mode renders `_..._` as literal underscores. Use <i>...</i> so the
-    # page counter italicizes correctly under the configured parse_mode.
-    return [f"{c}\n\n<i>({i + 1}/{total})</i>" if total > 1 else c
-            for i, c in enumerate(chunks)]
+    return chunks
+
+
+def _page_counter(idx: int, total: int, parse_mode: str) -> str:
+    """Render the (N/M) page counter for a chunk. Empty when single-chunk."""
+    if total <= 1:
+        return ""
+    if parse_mode == "HTML":
+        return f"\n\n<i>({idx + 1}/{total})</i>"
+    return f"\n\n({idx + 1}/{total})"
+
+
+# Backwards-compat shim — tests and the /status command import this name.
+# The old signature returned chunks with the page counter already appended;
+# the new flow appends the counter at send time so the plain-text fallback
+# doesn't render `<i>` as literal text.
+def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
+    return _chunk_body(text, limit=limit)
 
 
 def _is_parse_error(resp: httpx.Response) -> bool:
@@ -80,7 +136,13 @@ async def _post(client: httpx.AsyncClient, token: str, payload: dict[str, Any]) 
 async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                     text: str, parse_mode: str) -> int | None:
     """Send one chunk. If Telegram rejects our Markdown parse, fall back to
-    plain text once for the same chunk so the user still gets the message."""
+    plain text once for the same chunk so the user still gets the message.
+
+    `text` is the *full* chunk body including any page-counter suffix already
+    attached by `send_digest`; the parse_mode=fallback path receives a counter
+    rendered for the active parse mode, so we never emit literal `<i>` in
+    plain-text delivery.
+    """
     payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
@@ -103,6 +165,16 @@ async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                 # Telegram requires the field to be ABSENT for plain text;
                 # sending `parse_mode: null` gets rejected as "unsupported".
                 fallback.pop("parse_mode", None)
+                # Strip the HTML page counter from the body — in plain-text
+                # mode the <i> tags would render as literal text. The text
+                # already ends in a counter from send_digest(); convert it
+                # rather than dropping it.
+                import re as _re
+                fallback["text"] = _re.sub(
+                    r"\s*<i>\((\d+)/(\d+)\)</i>\s*$",
+                    lambda m: f" ({m.group(1)}/{m.group(2)})",
+                    fallback["text"],
+                )
                 resp2 = await _post(client, token, fallback)
                 if resp2.status_code == 200 and resp2.json().get("ok"):
                     return resp2.json()["result"]["message_id"]
@@ -152,13 +224,21 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
     if cfg.telegram.parse_mode == "HTML":
         text = sanitize_outgoing(text)
 
-    chunks = _chunk(text)
+    # Split into bodies first; the page counter is added per-send so a
+    # parse_mode=plain-text fallback can render it without literal HTML tags.
+    bodies = _chunk_body(text)
+    total = len(bodies)
     ids: list[int] = []
     async with httpx.AsyncClient() as client:
-        for chunk in chunks:
+        for i, body in enumerate(bodies):
+            # Pre-render for the configured parse mode. On fallback, _send_one
+            # strips the <i>...</i> suffix and re-emits a plain-text counter.
+            chunk = body + _page_counter(i, total, cfg.telegram.parse_mode)
             mid = await _send_one(client, token, chat_id, chunk, cfg.telegram.parse_mode)
             if mid is not None:
                 ids.append(mid)
             else:
+                log.error("telegram: chunk %d/%d failed permanently; aborting send",
+                          i + 1, total)
                 break
     return ids

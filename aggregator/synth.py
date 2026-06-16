@@ -101,6 +101,7 @@ def _query_for_topic(topic_id: str, cfg: Config) -> str:
     """
     topic = cfg.topics[topic_id]
     if topic.kind == "watchlist":
+        # Discriminated union: `topic` is WatchlistTopicConfig here.
         return " ".join(topic.query_symbols)
     if topic.hn_keywords:
         return " ".join(topic.hn_keywords)
@@ -135,6 +136,16 @@ def _get_client() -> OpenAI:
         # event-loop thread for 10 minutes; cap at 60s with 2 SDK-level retries.
         _client = OpenAI(api_key=key, timeout=60.0, max_retries=2)
     return _client
+
+
+def _reset_client_for_tests() -> None:
+    """Drop the cached OpenAI client so the next ``_get_client()`` re-reads
+    ``OPENAI_API_KEY`` from the environment. Production code never calls
+    this; tests use it to swap keys between cases without leaking state
+    across the module-level singleton.
+    """
+    global _client
+    _client = None
 
 
 def _build_messages(topic_id: str, items: list[dict[str, Any]], cfg: Config) -> list[dict[str, str]]:

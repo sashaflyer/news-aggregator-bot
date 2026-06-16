@@ -181,20 +181,23 @@ class Storage:
         Consumers (pipeline, synth) decode this back from the row when needed.
         """
         for topic_id, topic in topics.items():
-            search_queries = json.dumps({
+            payload: dict[str, Any] = {
                 "kind": topic.kind,
                 "sources": list(topic.sources),
                 "prompt_template": topic.prompt_template,
                 "polymarket_tags": list(topic.polymarket_tags),
                 "hn_keywords": list(topic.hn_keywords),
                 "rss_feeds": list(topic.rss_feeds),
-                "watch": [
+                "watch": [],
+            }
+            # Discriminated union: general topics have no `watch` field.
+            if topic.kind == "watchlist":
+                payload["watch"] = [
                     {"ticker": w.ticker, "aliases": list(w.aliases),
                      "feeds": list(w.feeds), "search_feeds": list(w.search_feeds)}
                     for w in topic.watch
-                ],
-            })
-            self._upsert_topic(topic_id, search_queries, topic.schedule)
+                ]
+            self._upsert_topic(topic_id, json.dumps(payload), topic.schedule)
 
     def _upsert_topic(self, name: str, search_queries: str, schedule: str) -> None:
         conn = self._connect()
@@ -375,7 +378,9 @@ class Storage:
     ) -> int:
         """Record the items just delivered for `topic_id` so future digests can
         filter them out. Items with no URL fall back to ``id:<source-id>`` as a
-        dedup key; items with neither are skipped. Returns rows inserted.
+        dedup key; items with neither are skipped. Returns rows actually
+        inserted (UNIQUE index collisions via INSERT OR IGNORE return 0 from
+        Cursor.rowcount, so re-deliveries don't inflate the count).
         """
         ts = _iso(at)
         conn = self._connect()
@@ -385,13 +390,16 @@ class Storage:
                 key = dedup_key(it)
                 if not key:
                     continue
-                conn.execute(
+                cur = conn.execute(
                     """INSERT OR IGNORE INTO delivered_findings
                            (topic_id, item_id, url, title, delivered_at)
                        VALUES (?, ?, ?, ?, ?)""",
                     (topic_id, str(it.get("id", "")), key, it.get("title") or "", ts),
                 )
-                n += 1
+                # rowcount is 1 on insert, 0 on UNIQUE collision. Counting
+                # attempts (the old behavior) would report a non-zero value
+                # for items that were already on file.
+                n += cur.rowcount or 0
             conn.commit()
             return n
         finally:

@@ -22,7 +22,7 @@ max_input_items = 40
 max_output_tokens = 1200
 
 [telegram]
-parse_mode = "MarkdownV2"
+parse_mode = "HTML"
 
 [storage]
 data_dir = "./data"

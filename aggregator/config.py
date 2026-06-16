@@ -4,14 +4,17 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal, Union
 
 from apscheduler.triggers.cron import CronTrigger
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-# The set of source registry keys understood by the pipeline. Kept in sync
-# with aggregator.pipeline.SOURCES — adding a source means updating both.
-_KNOWN_SOURCES = {"rss", "polymarket", "hackernews"}
+from aggregator.sources.registry import KNOWN_SOURCE_KEYS
+
+# The set of source registry keys understood by the pipeline. Imported from
+# ``aggregator.sources.registry`` — the canonical list — and aliased for
+# existing call sites that reference ``_KNOWN_SOURCES``.
+_KNOWN_SOURCES = KNOWN_SOURCE_KEYS
 
 # Prompt template filenames are constrained to a safe character class so a
 # config writer cannot escape PROMPTS_DIR via path-traversal sequences.
@@ -88,26 +91,21 @@ class WatchEntry(BaseModel):
         return _strip_nonempty_list(v)
 
 
-class TopicConfig(BaseModel):
-    """Data-driven topic definition. One entry per [topics.<id>] table.
-
-    `kind` switches the digest shape:
-    - "general"   -> rank globally, keep top_n.
-    - "watchlist" -> per_symbol_top_n * len(watch) cap, requires `watch` entries.
+class _BaseTopicConfig(BaseModel):
+    """Shared fields for the topic-discriminated union. Constructing this
+    class directly is a programming error; use ``TopicConfig`` (the factory)
+    or one of the concrete subclasses ``GeneralTopicConfig`` /
+    ``WatchlistTopicConfig``.
     """
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["general", "watchlist"]
     sources: list[str] = Field(min_length=1)
     prompt_template: str
     schedule: str
-    top_n: int | None = Field(default=None, ge=1, le=200)
-    per_symbol_top_n: int | None = Field(default=None, ge=1, le=50)
     # Per-source query inputs (all optional; each source picks what it understands).
     polymarket_tags: list[str] = Field(default_factory=list)
     hn_keywords: list[str] = Field(default_factory=list)
     rss_feeds: list[str] = Field(default_factory=list)
-    watch: list[WatchEntry] = Field(default_factory=list)
 
     @field_validator("schedule")
     @classmethod
@@ -138,16 +136,22 @@ class TopicConfig(BaseModel):
     def _v_string_lists(cls, v: list[str]) -> list[str]:
         return _strip_nonempty_list(v)
 
-    @model_validator(mode="after")
-    def _v_kind_requirements(self) -> "TopicConfig":
-        if self.kind == "general" and self.top_n is None:
-            raise ValueError("kind='general' requires top_n")
-        if self.kind == "watchlist":
-            if self.per_symbol_top_n is None:
-                raise ValueError("kind='watchlist' requires per_symbol_top_n")
-            if not self.watch:
-                raise ValueError("kind='watchlist' requires non-empty watch entries")
-        return self
+
+class GeneralTopicConfig(_BaseTopicConfig):
+    """Topic with a single global rank: keep the top-N items by engagement."""
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["general"] = "general"
+    top_n: int = Field(ge=1, le=200)
+
+
+class WatchlistTopicConfig(_BaseTopicConfig):
+    """Topic with per-symbol bucketing: keep per_symbol_top_n items per coin."""
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["watchlist"] = "watchlist"
+    per_symbol_top_n: int = Field(ge=1, le=50)
+    watch: list[WatchEntry] = Field(min_length=1)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -164,6 +168,38 @@ class TopicConfig(BaseModel):
             out.append(w.ticker)
             out.extend(w.aliases)
         return out
+
+
+# The user-facing constructor. Routes to the right concrete subclass based on
+# `kind` so existing call sites (``TopicConfig(kind="general", ...)``) keep
+# working without importing two separate names. Pydantic v2's discriminated
+# union takes care of the same dispatch for TOML-loaded configs.
+_AnyTopicConfig = Annotated[
+    Union[GeneralTopicConfig, WatchlistTopicConfig],
+    Field(discriminator="kind"),
+]
+
+
+def TopicConfig(**data: Any) -> _AnyTopicConfig:  # type: ignore[valid-type]
+    """Factory mirroring the old class-constructor API.
+
+    Dispatches to ``GeneralTopicConfig`` (kind="general") or
+    ``WatchlistTopicConfig`` (kind="watchlist") based on `data["kind"]`. Lets
+    callers keep using ``TopicConfig(kind=..., top_n=...)`` and get back the
+    narrowed concrete type.
+    """
+    kind = data.get("kind")
+    if kind == "general":
+        return GeneralTopicConfig(**data)
+    if kind == "watchlist":
+        return WatchlistTopicConfig(**data)
+    raise ValueError(
+        f"TopicConfig: kind must be 'general' or 'watchlist'; got {kind!r}"
+    )
+
+
+# Type alias for typing the topics dict on Config (and on test fixtures).
+TopicConfigT = Union[GeneralTopicConfig, WatchlistTopicConfig]
 
 
 class ScoringConfig(BaseModel):
@@ -185,7 +221,10 @@ class SynthConfig(BaseModel):
 class TelegramConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    parse_mode: Literal["MarkdownV2", "Markdown", "HTML"]
+    # The LLM prompt templates emit HTML. The plain-text and Markdown modes
+    # have different escape rules and would silently mismatch the LLM output,
+    # so we restrict the option set to the one we actually use.
+    parse_mode: Literal["HTML"]
 
 
 class StorageConfig(BaseModel):
@@ -202,7 +241,10 @@ class Config(BaseModel):
     synth: SynthConfig
     telegram: TelegramConfig
     storage: StorageConfig
-    topics: dict[str, TopicConfig] = Field(min_length=1)
+    # Discriminated union: Pydantic parses each entry into the right concrete
+    # topic class based on `kind`, giving downstream code a narrowed type
+    # without `# type: ignore` workarounds.
+    topics: dict[str, _AnyTopicConfig] = Field(min_length=1)  # type: ignore[valid-type]
 
 
 def load_config(path: str | Path) -> Config:

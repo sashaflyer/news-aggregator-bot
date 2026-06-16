@@ -11,7 +11,8 @@ import re
 
 # Telegram's HTML parse_mode supported tags. `strong` and `em` are aliases of
 # `b` and `i` and Telegram accepts them; keeping them avoids LLM-output churn.
-_ALLOWED_TAGS = {"b", "i", "u", "s", "a", "code", "pre", "strong", "em"}
+ALLOWED_TAGS = frozenset({"b", "i", "u", "s", "a", "code", "pre", "strong", "em"})
+_ALLOWED_TAGS = ALLOWED_TAGS  # backwards-compat for any importer using the underscore name
 _TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
 _HREF_RE = re.compile(r'href="(https?://[^"]+)"')
 
@@ -37,3 +38,8 @@ def sanitize_outgoing(text: str) -> str:
         return f"<{slash}{tag}>"
 
     return _TAG_RE.sub(_replace, text)
+
+
+# Regex for matching HTML entities (named, decimal, hex). Used by
+# ``delivery.telegram._find_safe_cut`` to avoid splitting an entity mid-string.
+HTML_ENTITY_RE = re.compile(r"&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);?")

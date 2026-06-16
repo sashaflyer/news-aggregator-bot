@@ -460,7 +460,11 @@ def test_cap_per_symbol_metadata_tag_overrides_conflicting_alias():
     # If metadata were IGNORED, both -> AVAX bucket and output would be input order
     # [untagged, tagged]. So this assertion distinguishes the two.
     out = _cap_per_symbol([untagged, tagged], ["SOL", "AVAX"], alias_map, per_symbol_top_n=5)
-    assert out == [tagged, untagged]
+    # Item is frozen + dataclasses.replace produces new instances on stamp;
+    # compare by id (the contract) plus the stamped bucket on the unmatched
+    # one (the assignment under test).
+    assert [it.id for it in out] == [tagged.id, untagged.id]
+    assert out[1].metadata["watchlist_symbol"] == "AVAX"
 
 
 def test_cap_per_symbol_matches_alias_text():
@@ -468,7 +472,9 @@ def test_cap_per_symbol_matches_alias_text():
     it = _wl_item("hackernews", "Avalanche subnet launches")  # alias, no AVAX ticker
     alias_map = {"avax": "AVAX", "avalanche": "AVAX"}
     out = _cap_per_symbol([it], ["AVAX"], alias_map, 5)
-    assert out == [it]
+    assert [it_out.id for it_out in out] == [it.id]
+    # Alias-match path stamps the canonical bucket.
+    assert out[0].metadata["watchlist_symbol"] == "AVAX"
 
 
 def test_cap_per_symbol_stamps_canonical_symbol():
@@ -490,83 +496,92 @@ def test_cap_per_symbol_stamps_canonical_symbol():
 
 @pytest.mark.asyncio
 async def test_run_digest_watchlist_rss_symbol_feeds(cfg, storage):
-    """run_digest for crypto_watchlist must call _fetch_feed with the configured
+    """run_digest for crypto_watchlist must request the configured
     per-coin tag-feed URLs (rss_symbol_feeds) AND per-symbol search-feed URLs
-    (rss_search_feeds), and deliver tagged items.
+    (rss_search_feeds) over HTTP, and deliver tagged items.
 
     Failure mode caught: if either key were misspelled in pipeline.run_digest,
-    RssSource.fetch would see empty inputs, _fetch_feed would never be called for
-    those URLs, and this test would fail on the called_urls checks AND on
+    RssSource.fetch would see empty inputs, no HTTP request would be made for
+    those URLs, and this test would fail on the requested_urls checks AND on
     items_delivered == 0.
     """
     import time
     from unittest.mock import AsyncMock, MagicMock, patch
+    import httpx
+    import respx
     from aggregator import pipeline
 
-    # A recent published_parsed tuple (_to_item unpacks sp[:6]).
-    _recent = (2026, 5, 29, 10, 0, 0)
-
-    # Feed URL -> list of raw entry dicts (shape RssSource._to_item expects).
-    _FEED_ENTRIES: dict[str, list[dict]] = {
-        "https://cointelegraph.com/rss/tag/solana": [
-            {"id": "sol-1", "title": "Solana upgrade ships",
-             "url": "https://ct.com/sol-1", "summary": "A major Solana upgrade.",
-             "published_parsed": _recent},
-        ],
-        "https://cointelegraph.com/rss/tag/sui": [
-            {"id": "sui-1", "title": "Sui DeFi milestone",
-             "url": "https://ct.com/sui-1", "summary": "Sui hits TVL record.",
-             "published_parsed": _recent},
-        ],
-        "https://cointelegraph.com/rss/tag/avalanche": [
-            {"id": "avax-1", "title": "Avalanche subnet expansion",
-             "url": "https://ct.com/avax-1", "summary": "New subnet launches.",
-             "published_parsed": _recent},
-        ],
-        "https://cryptoslate.com/news/ethena/feed/": [
-            {"id": "ena-1", "title": "Ethena USDe supply hits record",
-             "url": "https://cs.com/ena-1", "summary": "Ethena USDe milestone.",
-             "published_parsed": _recent},
-        ],
-    }
-
-    # Per-symbol Google News search feed for SOL (exact URL taken from config so
-    # the assertion below proves the rss_search_feeds wiring, not a hardcode).
+    # The SOL search feed (URL taken from config so the assertion below
+    # proves the rss_search_feeds wiring, not a hardcode).
     _sol_search = cfg.topics["crypto_watchlist"].watch[0].search_feeds[0]
-    _FEED_ENTRIES[_sol_search] = [
-        {"id": "sol-gn-1", "title": "Solana ETF filing reported",
-         "url": "https://gn.com/sol-gn-1", "summary": "Solana ETF news.",
-         "published_parsed": _recent},
-    ]
 
-    def fake_fetch_feed(url: str) -> list[dict]:
-        return _FEED_ENTRIES.get(url, [])
+    # Real RSS XML for each tag feed. feedparser requires valid XML; the
+    # exact titles/links/ids are arbitrary — what matters is the URL
+    # routing and that the entries are tagged correctly downstream.
+    def _rss_xml(item_id: str, title: str, link: str) -> bytes:
+        # Build a tiny RSS 2.0 document with a single item. feedparser is
+        # permissive — minimal valid XML with the right tags is enough.
+        return (
+            b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            b"<rss version=\"2.0\"><channel>"
+            b"<title>Test</title><link>https://t/</link>"
+            b"<item>"
+            b"<id>" + item_id.encode() + b"</id>"
+            b"<title>" + title.encode() + b"</title>"
+            b"<link>" + link.encode() + b"</link>"
+            b"<description>desc " + item_id.encode() + b"</description>"
+            b"<pubDate>Thu, 28 May 2026 18:00:00 +0000</pubDate>"
+            b"</item></channel></rss>"
+        )
+
+    # URL -> response body for the *canned* feeds. Other URLs (the broad
+    # rss_feeds list, plus the SUI/AVAX/ENA search feeds) get empty bodies
+    # via the catch-all route.
+    _FEED_BODIES: dict[str, bytes] = {
+        "https://cointelegraph.com/rss/tag/solana":
+            _rss_xml("sol-1", "Solana upgrade ships", "https://ct.com/sol-1"),
+        "https://cointelegraph.com/rss/tag/sui":
+            _rss_xml("sui-1", "Sui DeFi milestone", "https://ct.com/sui-1"),
+        "https://cointelegraph.com/rss/tag/avalanche":
+            _rss_xml("avax-1", "Avalanche subnet expansion", "https://ct.com/avax-1"),
+        "https://cryptoslate.com/news/ethena/feed/":
+            _rss_xml("ena-1", "Ethena USDe supply hits record", "https://cs.com/ena-1"),
+        _sol_search:
+            _rss_xml("sol-gn-1", "Solana ETF filing reported", "https://gn.com/sol-gn-1"),
+    }
 
     # Stub out polymarket and hackernews so only RssSource runs for real.
     stub_source = MagicMock()
     stub_source.fetch = AsyncMock(return_value=[])
 
-    with patch("aggregator.sources.rss._fetch_feed", side_effect=fake_fetch_feed) as mock_ff, \
-         patch.dict(pipeline.SOURCES, {"polymarket": stub_source, "hackernews": stub_source}), \
-         patch.object(pipeline, "synthesize_async", new=AsyncMock(return_value="WATCHLIST DIGEST")), \
-         patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[42])):
-        result = await pipeline.run_digest("crypto_watchlist", cfg, storage, trigger="scheduled")
+    with respx.mock(assert_all_called=False) as router:
+        # Canned feeds return real (small) RSS XML; everything else gets
+        # an empty 200 — equivalent to "fetched, no entries".
+        for url, body in _FEED_BODIES.items():
+            router.get(url).mock(return_value=httpx.Response(200, content=body))
+        router.route().mock(return_value=httpx.Response(200, content=b"<rss/>"))
+        with patch.dict(pipeline.SOURCES, {"polymarket": stub_source, "hackernews": stub_source}), \
+             patch.object(pipeline, "synthesize_async", new=AsyncMock(return_value="WATCHLIST DIGEST")), \
+             patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[42])):
+            result = await pipeline.run_digest("crypto_watchlist", cfg, storage,
+                                                trigger="scheduled")
+        requested_urls = {str(call.request.url) for call in router.calls}
 
     # Run must succeed.
     assert result.status == "ok"
 
-    # _fetch_feed must have been called with the SOL/ENA tag-feed URLs and the
-    # SOL search-feed URL. This verifies the rss_symbol_feeds and rss_search_feeds
-    # keys are spelled correctly in pipeline.run_digest and reach RssSource.fetch.
-    called_urls = {call.args[0] for call in mock_ff.call_args_list}
-    assert "https://cointelegraph.com/rss/tag/solana" in called_urls, (
-        "SOL tag feed was not fetched — rss_symbol_feeds wiring likely broken"
+    # The configured per-coin tag-feed URLs and the SOL search-feed URL
+    # must have been requested. This verifies the rss_symbol_feeds and
+    # rss_search_feeds keys are spelled correctly in pipeline.run_digest
+    # and reach RssSource.fetch.
+    assert "https://cointelegraph.com/rss/tag/solana" in requested_urls, (
+        "SOL tag feed was not requested — rss_symbol_feeds wiring likely broken"
     )
-    assert "https://cryptoslate.com/news/ethena/feed/" in called_urls, (
-        "ENA tag feed was not fetched — rss_symbol_feeds wiring likely broken"
+    assert "https://cryptoslate.com/news/ethena/feed/" in requested_urls, (
+        "ENA tag feed was not requested — rss_symbol_feeds wiring likely broken"
     )
-    assert _sol_search in called_urls, (
-        "SOL search feed was not fetched — rss_search_feeds wiring likely broken"
+    assert _sol_search in requested_urls, (
+        "SOL search feed was not requested — rss_search_feeds wiring likely broken"
     )
 
     # Items from the per-coin feeds must have flowed through to delivery.

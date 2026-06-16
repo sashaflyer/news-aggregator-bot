@@ -12,6 +12,7 @@ from aggregator.config import Config
 from aggregator.sources.base import Item, Source
 from aggregator.sources.hn import HnSource
 from aggregator.sources.polymarket import PolymarketSource
+from aggregator.sources.registry import KNOWN_SOURCE_KEYS
 from aggregator.sources.rss import RssSource
 from aggregator.storage import Storage
 from aggregator.relevance import filter_crypto_watchlist_items
@@ -23,11 +24,22 @@ from aggregator.vendor.last30days import schema as _schema
 
 log = logging.getLogger(__name__)
 
+# Source registry: keys MUST match KNOWN_SOURCE_KEYS from sources.registry.
+# Adding a new source = (1) define the adapter, (2) add the key to
+# KNOWN_SOURCE_KEYS, (3) add the instance here — in that order.
 SOURCES: dict[str, Source] = {
     "rss": RssSource(),
     "polymarket": PolymarketSource(),
     "hackernews": HnSource(),
 }
+
+# Defensive: at import time, catch a divergence between the canonical key
+# set (config validator) and the actually-built instances. A typo in either
+# would otherwise surface only as a config-time error.
+assert set(SOURCES.keys()) == set(KNOWN_SOURCE_KEYS), (
+    f"SOURCES dict {sorted(SOURCES)} diverges from "
+    f"KNOWN_SOURCE_KEYS {sorted(KNOWN_SOURCE_KEYS)}"
+)
 
 
 @dataclass
@@ -110,8 +122,8 @@ def _cap_per_symbol(
         if len(buckets[matched]) < per_symbol_top_n:
             # Stamp the canonical bucket so downstream (synth prompt) can trust
             # it directly instead of re-deriving buckets by text-matching.
-            it.metadata["watchlist_symbol"] = matched
-            buckets[matched].append(it)
+            # Item is frozen; the new instance leaves the input untouched.
+            buckets[matched].append(it.with_metadata(watchlist_symbol=matched))
     out: list[Item] = []
     for sym in canonical_symbols:
         out.extend(buckets[sym])
@@ -186,13 +198,26 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         "polymarket_tags": topic.polymarket_tags,
         "hn_keywords": topic.hn_keywords,
         "rss_feeds": topic.rss_feeds,
-        "rss_symbol_feeds": {w.ticker: w.feeds for w in topic.watch if w.feeds},
-        "rss_search_feeds": [
+    }
+    if topic.kind == "watchlist":
+        # Watchlist-only fields; the discriminated union narrows `topic` to
+        # WatchlistTopicConfig here so `watch` and `query_symbols` resolve.
+        queries["rss_symbol_feeds"] = {
+            w.ticker: w.feeds for w in topic.watch if w.feeds
+        }
+        queries["rss_search_feeds"] = [
             {"symbol": w.ticker, "terms": [w.ticker, *w.aliases], "url": u}
             for w in topic.watch for u in w.search_feeds
-        ],
-        "symbols": topic.query_symbols,
-    }
+        ]
+        queries["symbols"] = topic.query_symbols
+    else:
+        # General topics: feed the rss broad-feed filter with hn_keywords
+        # (the operator's signal of "what this general topic is about").
+        # Sources consult `symbols` only if it's present; for general topics
+        # the broad feeds are *not* symbol-filtered.
+        queries["rss_symbol_feeds"] = {}
+        queries["rss_search_feeds"] = []
+        queries["symbols"] = []
 
     per_source = await _fetch_all(queries, topic.sources)
     items: list[Item] = []
@@ -252,14 +277,18 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
                      dropped, len(items))
 
     if topic.kind == "general":
+        # Discriminated union narrows `topic` to GeneralTopicConfig here, so
+        # `top_n` is `int` (not `int | None`).
         ranked = _score_and_dedup(
-            items, top_n=topic.top_n,  # type: ignore[arg-type]
+            items, top_n=topic.top_n,
             per_author_cap=cfg.scoring.per_author_cap,
         )
     else:
-        # Watchlist: rank with generous headroom so dedupe+per-author-cap don't
+        # Discriminated union narrows `topic` to WatchlistTopicConfig here,
+        # so `per_symbol_top_n` and `canonical_symbols` are non-None.
+        # Rank with generous headroom so dedupe+per-author-cap don't
         # starve the per-symbol bucketing step that follows.
-        pre_cap = topic.per_symbol_top_n * len(topic.canonical_symbols) * 4  # type: ignore[operator]
+        pre_cap = topic.per_symbol_top_n * len(topic.canonical_symbols) * 4
         ranked = _score_and_dedup(
             items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
         )
@@ -273,7 +302,7 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
             for a in w.aliases:
                 alias_map.setdefault(a.lower(), w.ticker)
         ranked = _cap_per_symbol(
-            ranked, topic.canonical_symbols, alias_map, topic.per_symbol_top_n,  # type: ignore[arg-type]
+            ranked, topic.canonical_symbols, alias_map, topic.per_symbol_top_n,
         )
 
     # Empty-result fallback: nothing new survived fetch/filter/dedup.
