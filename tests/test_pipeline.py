@@ -60,6 +60,36 @@ async def test_run_digest_happy_path(cfg, storage):
 
 
 @pytest.mark.asyncio
+async def test_score_and_dedup_runs_in_worker_thread(cfg, storage):
+    import threading
+    import time
+    from aggregator import pipeline
+
+    main_ident = threading.get_ident()
+    dedup_ident: list[int] = []
+
+    def slow_dedup(items, **kw):
+        time.sleep(0.5)
+        dedup_ident.append(threading.get_ident())
+        return items[: cfg.topics["ai_blogs"].top_n]
+
+    rss_items = [make_item("rss", i) for i in range(5)]
+
+    with patch.object(pipeline, "_fetch_all", new=AsyncMock(
+        return_value={"rss": rss_items}
+    )), patch.object(pipeline, "_score_and_dedup", side_effect=slow_dedup), \
+         patch.object(pipeline, "synthesize_async",
+                      new=AsyncMock(return_value="X")), \
+         patch.object(pipeline, "send_digest", new=AsyncMock(return_value=[1])):
+        result = await pipeline.run_digest("ai_blogs", cfg, storage,
+                                           trigger="manual")
+
+    assert result.status == "ok"
+    assert len(dedup_ident) == 1
+    assert dedup_ident[0] != main_ident
+
+
+@pytest.mark.asyncio
 async def test_run_digest_one_source_fails(cfg, storage):
     from aggregator import pipeline
 

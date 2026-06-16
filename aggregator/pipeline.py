@@ -291,11 +291,13 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
 
     if topic.kind == "general":
         # Discriminated union narrows `topic` to GeneralTopicConfig here, so
-        # `top_n` is `int` (not `int | None`).
-        ranked = _score_and_dedup(
-            items, top_n=topic.top_n,
-            per_author_cap=cfg.scoring.per_author_cap,
-            scoring=cfg.scoring,
+        # `top_n` is `int` (not `int | None`). Run in a worker thread:
+        # upstream dedup is O(n^2) and the ai_blogs broad-RSS path feeds it
+        # ~2200 items, which would block the event loop for >WatchdogSec
+        # and trip systemd SIGABRT.
+        ranked = await asyncio.to_thread(
+            _score_and_dedup, items, top_n=topic.top_n,
+            per_author_cap=cfg.scoring.per_author_cap, scoring=cfg.scoring,
         )
     else:
         # Discriminated union narrows `topic` to WatchlistTopicConfig here,
@@ -303,9 +305,9 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         # Rank with generous headroom so dedupe+per-author-cap don't
         # starve the per-symbol bucketing step that follows.
         pre_cap = topic.per_symbol_top_n * len(topic.canonical_symbols) * 4
-        ranked = _score_and_dedup(
-            items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
-            scoring=cfg.scoring,
+        ranked = await asyncio.to_thread(
+            _score_and_dedup, items, top_n=pre_cap,
+            per_author_cap=cfg.scoring.per_author_cap, scoring=cfg.scoring,
         )
         # Build {lower(ticker|alias) -> canonical ticker}. Watch config is
         # operator-authored and trusted: on a duplicate alias the first-registered
