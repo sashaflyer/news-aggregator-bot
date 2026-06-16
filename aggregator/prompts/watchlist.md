@@ -31,6 +31,5 @@ SHAPE SPEC:
 - One `<b>🪙 SYMBOL</b>` header per canonical ticker — bold tag wrapping the coin emoji, a space, and the symbol name.
 - Aim for 2-3 bullets per symbol when input supports it. Drop to 1 only when the remaining items for that symbol are duplicates of each other or clearly off-topic.
 - If a symbol has zero notable items, render the block with a single bullet: `• no notable activity.` (note the trailing period).
-- Aim to keep total length under ~1800 characters — a soft guide; the per-symbol bullet counts above are the real bound.
 
 {include:_rules_telegram_html}

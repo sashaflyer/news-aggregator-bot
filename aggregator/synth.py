@@ -164,10 +164,11 @@ def _build_messages(topic_id: str, items: list[dict[str, Any]], cfg: Config) -> 
     # Compact separators (no indent/whitespace) — saves input tokens across the
     # up-to-max_input_items array; the model parses compact JSON fine.
     items_json = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+    count_line = f"ITEMS: {len(items)} survived upstream filtering.\n\n"
     if topic.kind == "watchlist":
-        user = f"SYMBOLS: {_format_watch_symbols(topic)}\n\nITEMS (JSON):\n{items_json}"
+        user = f"SYMBOLS: {_format_watch_symbols(topic)}\n\n{count_line}ITEMS (JSON):\n{items_json}"
     else:
-        user = f"ITEMS (JSON):\n{items_json}"
+        user = f"{count_line}ITEMS (JSON):\n{items_json}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
