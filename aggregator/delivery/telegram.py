@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -109,14 +110,6 @@ def _page_counter(idx: int, total: int, parse_mode: str) -> str:
     return f"\n\n({idx + 1}/{total})"
 
 
-# Backwards-compat shim — tests and the /status command import this name.
-# The old signature returned chunks with the page counter already appended;
-# the new flow appends the counter at send time so the plain-text fallback
-# doesn't render `<i>` as literal text.
-def _chunk(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
-    return _chunk_body(text, limit=limit)
-
-
 def _is_parse_error(resp: httpx.Response) -> bool:
     """Detect 'Bad Request: can't parse entities' — LLM emitted malformed Markdown."""
     if resp.status_code != 400:
@@ -165,12 +158,7 @@ async def _send_one(client: httpx.AsyncClient, token: str, chat_id: str,
                 # Telegram requires the field to be ABSENT for plain text;
                 # sending `parse_mode: null` gets rejected as "unsupported".
                 fallback.pop("parse_mode", None)
-                # Strip the HTML page counter from the body — in plain-text
-                # mode the <i> tags would render as literal text. The text
-                # already ends in a counter from send_digest(); convert it
-                # rather than dropping it.
-                import re as _re
-                fallback["text"] = _re.sub(
+                fallback["text"] = re.sub(
                     r"\s*<i>\((\d+)/(\d+)\)</i>\s*$",
                     lambda m: f" ({m.group(1)}/{m.group(2)})",
                     fallback["text"],
@@ -238,7 +226,9 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
             if mid is not None:
                 ids.append(mid)
             else:
-                log.error("telegram: chunk %d/%d failed permanently; aborting send",
-                          i + 1, total)
+                log.error("telegram: chunk %d/%d failed permanently; aborting send "
+                          "(dropped %d remaining chunk(s), first %d chars: %r)",
+                          i + 1, total, total - i - 1,
+                          len(body), body[:200])
                 break
     return ids

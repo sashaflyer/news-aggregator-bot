@@ -89,9 +89,6 @@ async def cli_run_once(*, topic_id: str, config_path: str) -> None:
 async def serve(*, config_path: str) -> None:
     _setup_logging()
     cfg, storage = _bootstrap(config_path)
-    _require_env("OPENAI_API_KEY")
-    _require_env("TELEGRAM_BOT_TOKEN")
-    _require_env_int("TELEGRAM_CHAT_ID")
     scheduler = build_scheduler(cfg, storage)
     init_locks(list(cfg.topics.keys()))
     app = build_application(storage=storage, scheduler=scheduler, cfg=cfg)
@@ -161,6 +158,10 @@ def main() -> None:
                            f"known topics: {known}\n")
         asyncio.run(cli_run_once(topic_id=args.topic, config_path=args.config))
     else:
+        load_dotenv()
+        _require_env("OPENAI_API_KEY")
+        _require_env("TELEGRAM_BOT_TOKEN")
+        _require_env_int("TELEGRAM_CHAT_ID")
         asyncio.run(serve(config_path=args.config))
 
 

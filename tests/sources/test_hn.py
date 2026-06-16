@@ -88,8 +88,8 @@ async def test_hn_failure_propagates_to_gather():
 
 
 def test_parse_created_at_bad_in_hn():
-    from aggregator.sources.hn import _parse_created_at
-    assert _parse_created_at("not a date") is None
+    from aggregator.sources._common import parse_created_at
+    assert parse_created_at("not a date") is None
 
 
 @pytest.mark.asyncio

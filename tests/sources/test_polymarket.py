@@ -78,8 +78,8 @@ async def test_symbol_filter_word_boundary_not_substring():
 
 
 def test_parse_created_at_bad_returns_none_not_now():
-    from aggregator.sources.polymarket import _parse_created_at
-    assert _parse_created_at("not a date") is None
+    from aggregator.sources._common import parse_created_at
+    assert parse_created_at("not a date") is None
 
 
 def test_fetch_by_tag_does_not_raise_on_signature():

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -36,10 +37,11 @@ SOURCES: dict[str, Source] = {
 # Defensive: at import time, catch a divergence between the canonical key
 # set (config validator) and the actually-built instances. A typo in either
 # would otherwise surface only as a config-time error.
-assert set(SOURCES.keys()) == set(KNOWN_SOURCE_KEYS), (
-    f"SOURCES dict {sorted(SOURCES)} diverges from "
-    f"KNOWN_SOURCE_KEYS {sorted(KNOWN_SOURCE_KEYS)}"
-)
+if set(SOURCES.keys()) != set(KNOWN_SOURCE_KEYS):
+    raise RuntimeError(
+        f"SOURCES dict {sorted(SOURCES)} diverges from "
+        f"KNOWN_SOURCE_KEYS {sorted(KNOWN_SOURCE_KEYS)}"
+    )
 
 
 @dataclass
@@ -59,7 +61,12 @@ async def _fetch_all(
         except Exception as e:
             log.exception("source %s failed", name)
             return name, e
-    selected = [(n, SOURCES[n]) for n in allowed_sources if n in SOURCES]
+    selected = []
+    for n in allowed_sources:
+        if n in SOURCES:
+            selected.append((n, SOURCES[n]))
+        else:
+            log.warning("source %r in config but not in SOURCES registry; skipping", n)
     pairs = await asyncio.gather(*(safe(n, s) for n, s in selected))
     return dict(pairs)
 
@@ -77,13 +84,19 @@ def _item_to_source_item(item: Item) -> "_schema.SourceItem":
     )
 
 
-def _engagement_score(item: Item) -> float:
-    """Single sortable engagement number; same weights as v1."""
+def _engagement_score(item: Item, *, scoring: "Config | None" = None) -> float:
+    """Single sortable engagement number. Weights come from ScoringConfig when
+    provided; defaults match the original hardcoded values."""
+    from aggregator.config import ScoringConfig
+    w_up = scoring.weight_upvotes if scoring else 1.0
+    w_sc = scoring.weight_score if scoring else 1.0
+    w_co = scoring.weight_comments if scoring else 0.1
+    w_vo = scoring.weight_volume if scoring else 0.001
     return (
-        item.engagement_raw.get("upvotes", 0)
-        + item.engagement_raw.get("score", 0)
-        + 0.1 * item.engagement_raw.get("comments", 0)
-        + 0.001 * (item.engagement_raw.get("volume") or 0)
+        w_up * item.engagement_raw.get("upvotes", 0)
+        + w_sc * item.engagement_raw.get("score", 0)
+        + w_co * item.engagement_raw.get("comments", 0)
+        + w_vo * (item.engagement_raw.get("volume") or 0)
     )
 
 
@@ -103,7 +116,6 @@ def _cap_per_symbol(
     Each kept item has ``metadata["watchlist_symbol"]`` stamped with its canonical
     bucket so the synth prompt can group by that field instead of re-matching.
     """
-    import re as _re
     buckets: dict[str, list[Item]] = {sym: [] for sym in canonical_symbols}
     canon_lower = {s.lower(): s for s in canonical_symbols}
     for it in items:
@@ -114,7 +126,7 @@ def _cap_per_symbol(
         else:
             text = f"{it.title} {it.text or ''}".lower()
             for alias_lower, canon in alias_map.items():
-                if _re.search(rf"\b{_re.escape(alias_lower)}\b", text):
+                if re.search(rf"\b{re.escape(alias_lower)}\b", text):
                     matched = canon
                     break
         if matched is None:
@@ -157,7 +169,8 @@ def _apply_per_author_cap(items: list[Item], cap: int) -> list[Item]:
     return out
 
 
-def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> list[Item]:
+def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int,
+                     scoring: "Config | None" = None) -> list[Item]:
     """Sort by engagement, then dedupe near-duplicates via upstream Jaccard-based
     dedupe_items (which keeps the first occurrence — so the higher-engagement
     variant wins the slot), then apply per-author cap and truncate to top_n.
@@ -165,7 +178,7 @@ def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int) -> l
     if not items:
         return []
 
-    ranked_first = sorted(items, key=_engagement_score, reverse=True)
+    ranked_first = sorted(items, key=lambda it: _engagement_score(it, scoring=scoring), reverse=True)
     by_id = {item.id: item for item in ranked_first}
     source_items = [_item_to_source_item(it) for it in ranked_first]
     try:
@@ -282,6 +295,7 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         ranked = _score_and_dedup(
             items, top_n=topic.top_n,
             per_author_cap=cfg.scoring.per_author_cap,
+            scoring=cfg.scoring,
         )
     else:
         # Discriminated union narrows `topic` to WatchlistTopicConfig here,
@@ -291,6 +305,7 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         pre_cap = topic.per_symbol_top_n * len(topic.canonical_symbols) * 4
         ranked = _score_and_dedup(
             items, top_n=pre_cap, per_author_cap=cfg.scoring.per_author_cap,
+            scoring=cfg.scoring,
         )
         # Build {lower(ticker|alias) -> canonical ticker}. Watch config is
         # operator-authored and trusted: on a duplicate alias the first-registered

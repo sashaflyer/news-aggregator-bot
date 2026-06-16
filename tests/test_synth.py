@@ -7,11 +7,6 @@ from aggregator.config import load_config
 
 
 @pytest.fixture
-def cfg(tmp_path):
-    return load_config("config.example.toml")
-
-
-@pytest.fixture
 def items():
     return [
         {"id": "reddit:1", "source": "reddit", "title": "SOL up 20%",

@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any
 
 from aggregator.sources.base import Item, Source
+from aggregator.sources._common import parse_created_at, matches_any_symbol
 from aggregator.vendor.last30days import polymarket as _upstream
 
 log = logging.getLogger(__name__)
@@ -41,27 +41,6 @@ def _fetch_by_tag(tag: str, limit: int = 50) -> list[dict[str, Any]]:
     return (response.get("events") or [])[:limit]
 
 
-def _parse_created_at(s: str | None) -> datetime | None:
-    """Parse a vendor ``date`` string (YYYY-MM-DD or ISO 8601) into UTC.
-
-    Returns ``None`` for missing or unparseable input — callers must drop
-    such items rather than backfilling ``now()`` (which would falsely
-    resurface stale items as fresh; audit M9).
-
-    Note: ``end_date`` is the market resolution date — usually in the future —
-    so it must NOT be used as the item's creation timestamp.
-    """
-    if not s:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(s))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
-
-
 def _to_item(raw: dict[str, Any]) -> Item | None:
     """Map an upstream Polymarket event dict to our Item.
 
@@ -75,7 +54,7 @@ def _to_item(raw: dict[str, Any]) -> Item | None:
     Legacy/test-fixture keys (``id``, ``slug``, ``volume``, ``outcomes``,
     ``description``) are still tolerated as fallbacks.
     """
-    created_at = _parse_created_at(raw.get("date"))
+    created_at = parse_created_at(raw.get("date"))
     if created_at is None:
         return None
 
@@ -118,19 +97,6 @@ def _to_item(raw: dict[str, Any]) -> Item | None:
     )
 
 
-def _matches_any_symbol(item: Item, symbols: list[str]) -> bool:
-    """Word-boundary, case-insensitive match against title or text.
-
-    Substring matching would false-positive on ``ETH`` in ``ETHICS``,
-    ``ADA`` in ``Canada``, ``SOL`` in ``solely``, etc.
-    """
-    hay = f"{item.title}\n{item.text}"
-    for sym in symbols:
-        if re.search(rf"\b{re.escape(sym)}\b", hay, flags=re.IGNORECASE):
-            return True
-    return False
-
-
 class PolymarketSource(Source):
     name = "polymarket"
 
@@ -163,6 +129,6 @@ class PolymarketSource(Source):
                     items.append(it)
 
         if symbols:
-            items = [it for it in items if _matches_any_symbol(it, symbols)]
+            items = [it for it in items if matches_any_symbol(it, symbols)]
 
         return items

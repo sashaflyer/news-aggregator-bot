@@ -199,7 +199,7 @@ def TopicConfig(**data: Any) -> _AnyTopicConfig:  # type: ignore[valid-type]
 
 
 # Type alias for typing the topics dict on Config (and on test fixtures).
-TopicConfigT = Union[GeneralTopicConfig, WatchlistTopicConfig]
+AnyTopicConfig = Union[GeneralTopicConfig, WatchlistTopicConfig]
 
 
 class ScoringConfig(BaseModel):
@@ -208,6 +208,10 @@ class ScoringConfig(BaseModel):
     dedup_window_days: int = Field(ge=1, le=365)
     min_score: float
     per_author_cap: int = Field(ge=1)
+    weight_upvotes: float = 1.0
+    weight_score: float = 1.0
+    weight_comments: float = 0.1
+    weight_volume: float = 0.001
 
 
 class SynthConfig(BaseModel):

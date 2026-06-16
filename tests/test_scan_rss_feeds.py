@@ -84,17 +84,6 @@ def test_classify_marks_slow_above_threshold():
     assert r2.status == "ok"
 
 
-def test_url_from_line_strips_comment():
-    assert scan_rss_feeds._url_from_line(
-        '  "https://example.com/x",   # a comment'
-    ) == "https://example.com/x"
-
-
-def test_url_from_line_returns_none_for_blank():
-    assert scan_rss_feeds._url_from_line("") is None
-    assert scan_rss_feeds._url_from_line("   # just a comment") is None
-
-
 def test_filter_rss_block_removes_dead_keeps_others():
     body = (
         '\n  "https://keep.example/1",\n'

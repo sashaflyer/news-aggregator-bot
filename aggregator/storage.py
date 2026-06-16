@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Generator
 
 from aggregator.url_norm import canonicalize, dedup_key
 from aggregator.vendor.last30days import store as upstream_store
 
 if TYPE_CHECKING:
-    from aggregator.config import TopicConfig
+    from aggregator.config import AnyTopicConfig
 
 
 _ADDED_SCHEMA = """
@@ -136,7 +137,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
 class Storage:
     """Thin SQLite access layer for the aggregator."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str | Path):
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -144,25 +145,27 @@ class Storage:
     def path(self) -> str:
         return str(self._path)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(str(self._path))
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
     def init_schema(self) -> None:
         """Initialize vendored schema then add project-specific tables."""
         upstream_store.init_db(self._path)
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             conn.executescript(_ADDED_SCHEMA)
-            conn.commit()
+            conn.execute("PRAGMA journal_mode=WAL")
             _migrate(conn)
-        finally:
-            conn.close()
 
     # --- Topics ---
 
-    def seed_topics(self, topics: Dict[str, "TopicConfig"]) -> None:
+    def seed_topics(self, topics: dict[str, "AnyTopicConfig"]) -> None:
         """Idempotently seed each topic in `topics` (dict keyed by topic id).
 
         For each TopicConfig, the full set of per-source query inputs plus
@@ -190,7 +193,6 @@ class Storage:
                 "rss_feeds": list(topic.rss_feeds),
                 "watch": [],
             }
-            # Discriminated union: general topics have no `watch` field.
             if topic.kind == "watchlist":
                 payload["watch"] = [
                     {"ticker": w.ticker, "aliases": list(w.aliases),
@@ -200,8 +202,7 @@ class Storage:
             self._upsert_topic(topic_id, json.dumps(payload), topic.schedule)
 
     def _upsert_topic(self, name: str, search_queries: str, schedule: str) -> None:
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT id FROM topics WHERE name = ?", (name,)
             ).fetchone()
@@ -218,26 +219,19 @@ class Storage:
                        WHERE name = ?""",
                     (search_queries, schedule, name),
                 )
-            conn.commit()
-        finally:
-            conn.close()
 
-    def list_topics(self) -> List[Dict[str, Any]]:
-        conn = self._connect()
-        try:
+    def list_topics(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM topics ORDER BY name"
             ).fetchall()
             return [dict(r) for r in rows]
-        finally:
-            conn.close()
 
     # --- Source health ---
 
     def record_source_failure(self, source: str, message: str, *, at: datetime) -> None:
         ts = _iso(at)
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             conn.execute(
                 """INSERT INTO source_health
                        (source, last_attempt_at, last_error_at, last_error_message,
@@ -250,14 +244,10 @@ class Storage:
                        consecutive_failures = source_health.consecutive_failures + 1""",
                 (source, ts, ts, message),
             )
-            conn.commit()
-        finally:
-            conn.close()
 
     def record_source_success(self, source: str, *, at: datetime) -> None:
         ts = _iso(at)
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             conn.execute(
                 """INSERT INTO source_health
                        (source, last_attempt_at, last_success_at, consecutive_failures)
@@ -268,44 +258,34 @@ class Storage:
                        consecutive_failures = 0""",
                 (source, ts, ts),
             )
-            conn.commit()
-        finally:
-            conn.close()
 
-    def get_source_health(self, source: str) -> Optional[Dict[str, Any]]:
-        conn = self._connect()
-        try:
+    def get_source_health(self, source: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM source_health WHERE source = ?", (source,)
             ).fetchone()
             return dict(row) if row else None
-        finally:
-            conn.close()
 
-    def all_source_health(self) -> List[Dict[str, Any]]:
-        conn = self._connect()
-        try:
+    def all_source_health(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM source_health ORDER BY source"
             ).fetchall()
             return [dict(r) for r in rows]
-        finally:
-            conn.close()
 
     # --- Runs ---
 
     def start_run(self, topic_id: str, *, trigger: str, at: datetime) -> int:
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             cur = conn.execute(
                 """INSERT INTO run_history (topic_id, started_at, trigger)
                    VALUES (?, ?, ?)""",
                 (topic_id, _iso(at), trigger),
             )
-            conn.commit()
-            return cur.lastrowid
-        finally:
-            conn.close()
+            row_id = cur.lastrowid
+            if row_id is None:
+                raise RuntimeError("INSERT into run_history returned no row id")
+            return row_id
 
     def finish_run(
         self,
@@ -314,11 +294,10 @@ class Storage:
         status: str,
         items_fetched: int,
         items_delivered: int,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         at: datetime,
     ) -> None:
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             conn.execute(
                 """UPDATE run_history
                    SET finished_at = ?, status = ?, items_fetched = ?,
@@ -326,13 +305,9 @@ class Storage:
                    WHERE id = ?""",
                 (_iso(at), status, items_fetched, items_delivered, error_message, run_id),
             )
-            conn.commit()
-        finally:
-            conn.close()
 
-    def last_run(self, topic_id: str) -> Optional[Dict[str, Any]]:
-        conn = self._connect()
-        try:
+    def last_run(self, topic_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
             row = conn.execute(
                 """SELECT * FROM run_history
                    WHERE topic_id = ? AND finished_at IS NOT NULL
@@ -341,8 +316,6 @@ class Storage:
                 (topic_id,),
             ).fetchone()
             return dict(row) if row else None
-        finally:
-            conn.close()
 
     # --- Digest log ---
 
@@ -352,20 +325,16 @@ class Storage:
         run_id: int,
         topic_id: str,
         message_text: str,
-        telegram_message_ids: List[int],
+        telegram_message_ids: list[int],
         at: datetime,
     ) -> None:
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             conn.execute(
                 """INSERT INTO digest_log
                        (run_id, topic_id, sent_at, message_text, telegram_message_ids)
                    VALUES (?, ?, ?, ?, ?)""",
                 (run_id, topic_id, _iso(at), message_text, json.dumps(telegram_message_ids)),
             )
-            conn.commit()
-        finally:
-            conn.close()
 
     # --- Delivered findings (cross-run memory so we don't repeat items) ---
 
@@ -373,7 +342,7 @@ class Storage:
         self,
         *,
         topic_id: str,
-        items: List[Dict[str, Any]],
+        items: list[dict[str, Any]],
         at: datetime,
     ) -> int:
         """Record the items just delivered for `topic_id` so future digests can
@@ -383,8 +352,7 @@ class Storage:
         Cursor.rowcount, so re-deliveries don't inflate the count).
         """
         ts = _iso(at)
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             n = 0
             for it in items:
                 key = dedup_key(it)
@@ -396,14 +364,8 @@ class Storage:
                        VALUES (?, ?, ?, ?, ?)""",
                     (topic_id, str(it.get("id", "")), key, it.get("title") or "", ts),
                 )
-                # rowcount is 1 on insert, 0 on UNIQUE collision. Counting
-                # attempts (the old behavior) would report a non-zero value
-                # for items that were already on file.
                 n += cur.rowcount or 0
-            conn.commit()
             return n
-        finally:
-            conn.close()
 
     def recently_delivered_urls(
         self,
@@ -412,16 +374,13 @@ class Storage:
         since: datetime,
     ) -> set[str]:
         """Return the set of URLs delivered for `topic_id` at or after `since`."""
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             cur = conn.execute(
                 """SELECT DISTINCT url FROM delivered_findings
                        WHERE topic_id = ? AND delivered_at >= ?""",
                 (topic_id, _iso(since)),
             )
             return {row["url"] for row in cur.fetchall() if row["url"]}
-        finally:
-            conn.close()
 
     def prune_delivered_findings(self, *, older_than: datetime) -> int:
         """Delete delivered_findings rows older than ``older_than``.
@@ -431,13 +390,9 @@ class Storage:
         and would otherwise grow unbounded over time, slowing the
         ``SELECT DISTINCT url`` scan on every run.
         """
-        conn = self._connect()
-        try:
+        with self._connect() as conn:
             cur = conn.execute(
                 "DELETE FROM delivered_findings WHERE delivered_at < ?",
                 (_iso(older_than),),
             )
-            conn.commit()
             return cur.rowcount or 0
-        finally:
-            conn.close()

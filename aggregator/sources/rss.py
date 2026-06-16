@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,6 +31,7 @@ import feedparser
 import httpx
 
 from aggregator.sources.base import Item, Source
+from aggregator.sources._common import matches_any_symbol
 
 log = logging.getLogger(__name__)
 
@@ -123,11 +123,6 @@ def _to_item(raw: dict[str, Any], *, now: datetime, symbol: str | None = None) -
     )
 
 
-def _matches_any_symbol(item: Item, symbols: list[str]) -> bool:
-    hay = f"{item.title}\n{item.text}"
-    return any(re.search(rf"\b{re.escape(s)}\b", hay, flags=re.IGNORECASE) for s in symbols)
-
-
 class RssSource(Source):
     name = "rss"
 
@@ -150,7 +145,7 @@ class RssSource(Source):
                     if it is not None:
                         untagged.append(it)
             if symbols:
-                untagged = [it for it in untagged if _matches_any_symbol(it, symbols)]
+                untagged = [it for it in untagged if matches_any_symbol(it, symbols)]
             items.extend(untagged)
 
         pairs = [(sym, u) for sym, urls in symbol_feeds.items() for u in urls]
@@ -177,6 +172,6 @@ class RssSource(Source):
                     continue
                 for r in raws:
                     it = _to_item(r, now=now, symbol=e["symbol"])
-                    if it is not None and _matches_any_symbol(it, e["terms"]):
+                    if it is not None and matches_any_symbol(it, e["terms"]):
                         items.append(it)
         return items

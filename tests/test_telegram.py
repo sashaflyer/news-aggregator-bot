@@ -5,11 +5,6 @@ import respx
 from aggregator.config import load_config
 
 
-@pytest.fixture
-def cfg():
-    return load_config("config.example.toml")
-
-
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "TEST_TOKEN")
@@ -208,10 +203,10 @@ def test_chunk_respects_utf16_budget_with_suffix():
     """Telegram counts UTF-16 code units, not Python chars. Each emoji is
     1 char but 2 code units, so a 2100-char emoji string is 4200 code units
     and must split into chunks that each fit under the 4096 hard cap."""
-    from aggregator.delivery.telegram import _chunk
+    from aggregator.delivery.telegram import _chunk_body
 
     text = "\U0001F600" * 2100
-    chunks = _chunk(text)
+    chunks = _chunk_body(text)
     for c in chunks:
         assert len(c.encode("utf-16-le")) // 2 <= 4096
 

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from aggregator.sources.base import Item, Source
+from aggregator.sources._common import parse_created_at
 from aggregator.vendor.last30days import hackernews as _upstream
 
 log = logging.getLogger(__name__)
@@ -37,23 +38,6 @@ def _fetch_hn(query: str, limit: int = 15) -> list[dict[str, Any]]:
     return parsed[:limit]
 
 
-def _parse_created_at(s: str | None) -> datetime | None:
-    """Parse a vendor ``date`` string (YYYY-MM-DD or ISO 8601) into UTC.
-
-    Returns ``None`` for missing or unparseable input — callers must drop
-    such items rather than backfilling ``now()`` (audit M9).
-    """
-    if not s:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(s))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
-
-
 def _to_item(raw: dict[str, Any]) -> Item | None:
     """Map an upstream HN dict to our Item, or ``None`` if date is unparseable.
 
@@ -62,7 +46,7 @@ def _to_item(raw: dict[str, Any]) -> Item | None:
          "author": ..., "date": "YYYY-MM-DD",
          "engagement": {"points": int, "comments": int}, ...}
     """
-    created_at = _parse_created_at(raw.get("date"))
+    created_at = parse_created_at(raw.get("date"))
     if created_at is None:
         return None
 

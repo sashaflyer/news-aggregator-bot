@@ -87,17 +87,17 @@ async def _scan_all(urls: list[tuple[str, str]]) -> list[FeedResult]:
         r.topics.append(topic)
         return r
 
-    async def run(url: str, topic: str) -> None:
+    async def run(url: str, topic: str, client: httpx.Client) -> None:
         async with sem:
-            with httpx.Client(timeout=_TIMEOUT_S) as client:
-                r = await asyncio.to_thread(_probe, url, client)
+            r = await asyncio.to_thread(_probe, url, client)
             existing = results_by_url.get(url)
             if existing is None:
                 results_by_url[url] = attach_topic(r, topic)
             else:
                 existing.topics.append(topic)
 
-    await asyncio.gather(*(run(u, t) for u, t in urls))
+    with httpx.Client(timeout=_TIMEOUT_S) as client:
+        await asyncio.gather(*(run(u, t, client) for u, t in urls))
     return list(results_by_url.values())
 
 
@@ -212,12 +212,6 @@ def _urls_from_line(line: str) -> list[str]:
     hash_pos = line.find("#")
     code = line if hash_pos < 0 else line[:hash_pos]
     return [m.group(2) for m in _QUOTED_RE.finditer(code)]
-
-
-def _url_from_line(line: str) -> str | None:
-    """Return the first quoted string on ``line``, or None. Comments ignored."""
-    urls = _urls_from_line(line)
-    return urls[0] if urls else None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -6,7 +6,7 @@ import html
 import json
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai import OpenAI
 
@@ -14,6 +14,9 @@ from aggregator.config import Config
 from aggregator.prompts import load as load_prompt
 from aggregator.vendor.last30days import schema as _schema
 from aggregator.vendor.last30days import snippet as _snippet
+
+if TYPE_CHECKING:
+    from aggregator.config import WatchlistTopicConfig
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +113,7 @@ def _query_for_topic(topic_id: str, cfg: Config) -> str:
     return topic_id
 
 
-def _format_watch_symbols(topic) -> str:
+def _format_watch_symbols(topic: "WatchlistTopicConfig") -> str:
     """Render the watch list as canonical tickers with parenthesized aliases.
 
     Example: ``SOL (also: Solana), SUI (also: Sui Network), AVAX``. Lets the
@@ -182,6 +185,8 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
     total_chars = sum(len(m["content"]) for m in messages)
     log.info("synth topic=%s items=%d prompt_chars=%d",
              topic_id, len(capped), total_chars)
+    if total_chars > 150_000:
+        log.warning("synth prompt_chars=%d may approach model context limit", total_chars)
 
     client = _get_client()
     resp = client.chat.completions.create(

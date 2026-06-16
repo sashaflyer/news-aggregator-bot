@@ -9,6 +9,13 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Item:
+    """Immutable container for a fetched news item.
+
+    ``frozen=True`` prevents field reassignment, but ``engagement_raw`` and
+    ``metadata`` are plain dicts whose *contents* remain mutable. Treat them
+    as read-only after construction; use ``with_metadata`` to derive a new
+    instance with additional metadata keys.
+    """
     id: str
     source: str
     title: str
