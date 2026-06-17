@@ -49,7 +49,7 @@ Each `↗` is a clickable link to the source.
 | Topic | What it covers | Sources |
 |-------|---------------|---------|
 | `ai_general` | AI/ML industry news | RSS, Polymarket, HN |
-| `ai_blogs` | 90+ Karpathy-curated tech blogs | RSS |
+| `ai_blogs` | 18 curated tech blogs | RSS |
 | `crypto_general` | Crypto market news | RSS, Polymarket, HN |
 | `crypto_watchlist` | SOL, SUI, AVAX, ENA per-coin tracking | RSS, Polymarket, HN |
 | `github_trending` | Trending AI/ML issues and PRs | GitHub Search API |
@@ -101,8 +101,8 @@ Each `↗` is a clickable link to the source.
 Requires **Python 3.12+**.
 
 ```bash
-git clone https://github.com/sashaflyer/news-aggregator-bot.git
-cd news-aggregator-bot
+git clone https://github.com/sashaflyer/briefbot.git
+cd briefbot
 python3 -m venv .venv
 source .venv/bin/activate              # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
@@ -136,7 +136,7 @@ Full guide: [`deploy/README.md`](deploy/README.md)
 sudo useradd -r -s /usr/sbin/nologin news-bot
 sudo mkdir -p /opt/news-aggregator /var/lib/news-aggregator
 sudo chown -R news-bot:news-bot /opt/news-aggregator /var/lib/news-aggregator
-sudo -u news-bot git clone https://github.com/sashaflyer/news-aggregator-bot.git /opt/news-aggregator
+sudo -u news-bot git clone https://github.com/sashaflyer/briefbot.git /opt/news-aggregator
 cd /opt/news-aggregator
 sudo -u news-bot python3 -m venv .venv && sudo -u news-bot .venv/bin/pip install -e .
 sudo -u news-bot cp config.example.toml config.toml && sudo -u news-bot $EDITOR config.toml
