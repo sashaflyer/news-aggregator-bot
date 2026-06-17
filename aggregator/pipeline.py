@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -87,19 +88,52 @@ def _item_to_source_item(item: Item) -> "_schema.SourceItem":
 
 
 def _engagement_score(item: Item, *, scoring: "Config | None" = None) -> float:
-    """Single sortable engagement number. Weights come from ScoringConfig when
-    provided; defaults match the original hardcoded values."""
+    """Single sortable engagement number.
+
+    Per-source weights from vendored signals.py override global config weights
+    when available. log1p scaling prevents high-engagement outliers from
+    dominating. Final score is multiplied by source quality.
+    """
     from aggregator.config import ScoringConfig
-    w_up = scoring.weight_upvotes if scoring else 1.0
-    w_sc = scoring.weight_score if scoring else 1.0
-    w_co = scoring.weight_comments if scoring else 0.1
-    w_vo = scoring.weight_volume if scoring else 0.001
-    return (
-        w_up * item.engagement_raw.get("upvotes", 0)
-        + w_sc * item.engagement_raw.get("score", 0)
-        + w_co * item.engagement_raw.get("comments", 0)
-        + w_vo * (item.engagement_raw.get("volume") or 0)
-    )
+
+    raw = item.engagement_raw
+    source = item.source
+
+    # Per-source weights (from vendor last30days signals.py).
+    per_source: dict[str, list[tuple[str, float]]] = {
+        "hackernews":  [("points", 0.55), ("comments", 0.45)],
+        "polymarket":  [("volume", 0.60), ("liquidity", 0.40)],
+        "github":      [("reactions", 0.70), ("comments", 0.30)],
+    }
+
+    weights = per_source.get(source)
+    if weights:
+        score = sum(
+            w * math.log1p(raw.get(field, 0) or 0)
+            for field, w in weights
+        )
+    else:
+        # Fallback: global config weights (RSS, custom sources).
+        w_up = scoring.weight_upvotes if scoring else 1.0
+        w_sc = scoring.weight_score if scoring else 1.0
+        w_co = scoring.weight_comments if scoring else 0.1
+        w_vo = scoring.weight_volume if scoring else 0.001
+        score = (
+            w_up * math.log1p(raw.get("upvotes", 0))
+            + w_sc * math.log1p(raw.get("score", 0))
+            + w_co * math.log1p(raw.get("comments", 0))
+            + w_vo * math.log1p(raw.get("volume") or 0)
+        )
+
+    # Source quality multiplier (from vendor last30days signals.py).
+    source_quality: dict[str, float] = {
+        "hackernews": 0.8,
+        "polymarket": 0.5,
+        "github": 0.7,
+    }
+    score *= source_quality.get(source, 0.6)
+
+    return score
 
 
 def _cap_per_symbol(
