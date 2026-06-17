@@ -26,7 +26,7 @@ END EXAMPLE
 
 SHAPE SPEC:
 
-- Sections in order: "⚙️ What's trending" (2-3 sentence overview synthesizing themes across the input — link the most important items inline; do not merely preview bullets that follow), "🔥 Hot discussions" (aim for 4-5 bullets; floor 3), "🛠️ Notable changes" (aim for 2-3 bullets).
+- Sections in order: "⚙️ What's trending" (2-3 sentence overview synthesizing themes across the input; do not merely preview bullets that follow), "🔥 Hot discussions" (aim for 4-5 bullets; floor 3), "🛠️ Notable changes" (aim for 2-3 bullets).
 - Use the exact section headers shown above — same emoji, same wording, wrapped in `<b>...</b>`.
 - Omit any section that has zero relevant items (skip both the header and the bullets).
 - Each bullet should include the owner/repo slug, a one-line summary, and the reaction/comment counts when available.

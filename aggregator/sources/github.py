@@ -164,7 +164,7 @@ class GithubSource(Source):
         if not all_queries:
             return []
 
-        token = _resolve_token()
+        token = await asyncio.to_thread(_resolve_token)
         if not token:
             log.info("github: no GITHUB_TOKEN or gh CLI; skipping")
             return []

@@ -87,6 +87,12 @@ def _item_to_source_item(item: Item) -> "_schema.SourceItem":
     )
 
 
+def _safe_log1p(value: float | int | None) -> float:
+    """math.log1p clamped to non-negative inputs. Prevents ValueError on
+    negative engagement values from data corruption or API anomalies."""
+    return math.log1p(max(0, value or 0))
+
+
 def _engagement_score(item: Item, *, scoring: "Config | None" = None) -> float:
     """Single sortable engagement number.
 
@@ -109,7 +115,7 @@ def _engagement_score(item: Item, *, scoring: "Config | None" = None) -> float:
     weights = per_source.get(source)
     if weights:
         score = sum(
-            w * math.log1p(raw.get(field, 0) or 0)
+            w * _safe_log1p(raw.get(field))
             for field, w in weights
         )
     else:
@@ -119,10 +125,10 @@ def _engagement_score(item: Item, *, scoring: "Config | None" = None) -> float:
         w_co = scoring.weight_comments if scoring else 0.1
         w_vo = scoring.weight_volume if scoring else 0.001
         score = (
-            w_up * math.log1p(raw.get("upvotes", 0))
-            + w_sc * math.log1p(raw.get("score", 0))
-            + w_co * math.log1p(raw.get("comments", 0))
-            + w_vo * math.log1p(raw.get("volume") or 0)
+            w_up * _safe_log1p(raw.get("upvotes"))
+            + w_sc * _safe_log1p(raw.get("score"))
+            + w_co * _safe_log1p(raw.get("comments"))
+            + w_vo * _safe_log1p(raw.get("volume"))
         )
 
     # Source quality multiplier (from vendor last30days signals.py).

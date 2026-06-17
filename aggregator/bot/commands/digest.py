@@ -48,8 +48,8 @@ async def handle_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    await update.message.reply_text(f"Running digest for {topic_id}…")
     try:
+        await update.message.reply_text(f"Running digest for {topic_id}…")
         await run_digest(topic_id, cfg, storage, trigger="manual")
     except Exception as e:
         log.exception("/digest for %s failed", topic_id)

@@ -73,7 +73,12 @@ def _to_item(raw: dict[str, Any]) -> Item | None:
 
     # Volume: vendor exposes volume1mo/volume24hr; prefer 1mo as the more
     # stable signal, fall back to 24hr, then a legacy top-level ``volume``.
-    volume = raw.get("volume1mo") or raw.get("volume24hr") or raw.get("volume")
+    # Explicit None checks — ``or`` would skip a valid zero volume.
+    volume = raw.get("volume1mo")
+    if volume is None:
+        volume = raw.get("volume24hr")
+    if volume is None:
+        volume = raw.get("volume")
 
     return Item(
         id=f"polymarket:{raw_id}",
