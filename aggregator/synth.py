@@ -194,7 +194,7 @@ def synthesize(topic_id: str, items: list[dict[str, Any]], *, cfg: Config) -> st
         model=cfg.synth.model,
         messages=messages,
         max_completion_tokens=cfg.synth.max_output_tokens,
-        reasoning_effort="medium",
+        reasoning_effort="low",
     )
     choice = resp.choices[0]
 

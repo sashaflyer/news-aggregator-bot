@@ -14,4 +14,4 @@ from typing import Final
 # Source registry keys. Operators reference these from config.toml under
 # ``[topics.<id>].sources = ["rss", "hackernews", ...]``. Keep this set
 # authoritative: ``pipeline.SOURCES`` MUST be a superset-by-key.
-KNOWN_SOURCE_KEYS: Final[frozenset[str]] = frozenset({"rss", "polymarket", "hackernews"})
+KNOWN_SOURCE_KEYS: Final[frozenset[str]] = frozenset({"rss", "polymarket", "hackernews", "github"})

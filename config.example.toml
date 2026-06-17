@@ -8,7 +8,7 @@ per_author_cap = 3
 
 [synth]
 model = "gpt-5.4-mini"
-max_input_items = 40
+max_input_items = 30
 max_output_tokens = 8192
 
 [telegram]
@@ -56,7 +56,7 @@ rss_feeds = [
 polymarket_tags = ["crypto"]
 prompt_template = "watchlist.md"
 per_symbol_top_n = 5
-schedule = "10 5,17 * * *"
+schedule = "15 5,17 * * *"
 
   [[topics.crypto_watchlist.watch]]
   ticker = "SOL"
@@ -131,3 +131,23 @@ rss_feeds = [
 prompt_template = "ai_blogs.md"
 top_n = 25
 schedule = "5 5,17 * * *"
+
+[topics.github_trending]
+kind = "general"
+sources = ["github"]
+# Keywords that signal quality AI/ML engineering discussions. GitHub search
+# returns issues+PRs sorted by reactions, so specific technical terms produce
+# better signal than broad queries like "AI".
+github_keywords = [
+  "inference",       # deployment, serving, vLLM, TGI, llama.cpp, TensorRT
+  "fine-tuning",     # LoRA, QLoRA, PEFT, training infrastructure
+  "RAG",             # retrieval augmented generation
+  "agent",           # AI agents, tool use, function calling
+  "transformer",     # architecture, implementation
+  "quantization",    # GGUF, GPTQ, AWQ, model compression
+  "CUDA",            # GPU programming, kernels, Triton
+  "diffusion",       # image generation, Stable Diffusion
+]
+prompt_template = "github_trending.md"
+top_n = 15
+schedule = "20 5,17 * * *"

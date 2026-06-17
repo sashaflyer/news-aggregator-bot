@@ -11,6 +11,7 @@ from typing import Any
 
 from aggregator.config import Config
 from aggregator.sources.base import Item, Source
+from aggregator.sources.github import GithubSource
 from aggregator.sources.hn import HnSource
 from aggregator.sources.polymarket import PolymarketSource
 from aggregator.sources.registry import KNOWN_SOURCE_KEYS
@@ -32,6 +33,7 @@ SOURCES: dict[str, Source] = {
     "rss": RssSource(),
     "polymarket": PolymarketSource(),
     "hackernews": HnSource(),
+    "github": GithubSource(),
 }
 
 # Defensive: at import time, catch a divergence between the canonical key
@@ -118,6 +120,11 @@ def _cap_per_symbol(
     """
     buckets: dict[str, list[Item]] = {sym: [] for sym in canonical_symbols}
     canon_lower = {s.lower(): s for s in canonical_symbols}
+    # Pre-compile alias patterns once instead of re.compiling per item per alias.
+    alias_patterns = {
+        alias: re.compile(rf"\b{re.escape(alias)}\b")
+        for alias in alias_map
+    }
     for it in items:
         matched = None
         tag = (it.metadata.get("watchlist_symbol") or "").strip().lower()
@@ -126,7 +133,7 @@ def _cap_per_symbol(
         else:
             text = f"{it.title} {it.text or ''}".lower()
             for alias_lower, canon in alias_map.items():
-                if re.search(rf"\b{re.escape(alias_lower)}\b", text):
+                if alias_patterns[alias_lower].search(text):
                     matched = canon
                     break
         if matched is None:
@@ -179,6 +186,16 @@ def _score_and_dedup(items: list[Item], *, top_n: int, per_author_cap: int,
         return []
 
     ranked_first = sorted(items, key=lambda it: _engagement_score(it, scoring=scoring), reverse=True)
+
+    # Pre-truncate before O(n^2) dedup. Items ranked below this threshold
+    # cannot survive the dedup + per-author-cap + top_n pipeline anyway.
+    # 10x headroom is generous: even if dedup removes nothing and every
+    # author hits the cap, we still have plenty of items to fill top_n.
+    pre_cap = max(top_n * 10, 200)
+    if len(ranked_first) > pre_cap:
+        log.info("pre-truncating %d -> %d items before dedup", len(ranked_first), pre_cap)
+        ranked_first = ranked_first[:pre_cap]
+
     by_id = {item.id: item for item in ranked_first}
     source_items = [_item_to_source_item(it) for it in ranked_first]
     try:
@@ -211,6 +228,7 @@ async def run_digest(topic_id: str, cfg: Config, storage: Storage, *,
         "polymarket_tags": topic.polymarket_tags,
         "hn_keywords": topic.hn_keywords,
         "rss_feeds": topic.rss_feeds,
+        "github_keywords": topic.github_keywords,
     }
     if topic.kind == "watchlist":
         # Watchlist-only fields; the discriminated union narrows `topic` to

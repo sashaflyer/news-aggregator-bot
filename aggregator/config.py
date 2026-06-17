@@ -105,6 +105,7 @@ class _BaseTopicConfig(BaseModel):
     # Per-source query inputs (all optional; each source picks what it understands).
     polymarket_tags: list[str] = Field(default_factory=list)
     hn_keywords: list[str] = Field(default_factory=list)
+    github_keywords: list[str] = Field(default_factory=list)
     rss_feeds: list[str] = Field(default_factory=list)
 
     @field_validator("schedule")
@@ -131,7 +132,7 @@ class _BaseTopicConfig(BaseModel):
             )
         return v
 
-    @field_validator("polymarket_tags", "hn_keywords", "rss_feeds")
+    @field_validator("polymarket_tags", "hn_keywords", "github_keywords", "rss_feeds")
     @classmethod
     def _v_string_lists(cls, v: list[str]) -> list[str]:
         return _strip_nonempty_list(v)
