@@ -133,7 +133,6 @@ def _migrate(conn: sqlite3.Connection) -> None:
                         )
             conn.execute("UPDATE project_schema_version SET version = ?", (v,))
             current = v
-    conn.commit()
 
 
 class Storage:
