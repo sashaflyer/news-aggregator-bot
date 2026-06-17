@@ -139,14 +139,14 @@ sources = ["github"]
 # returns issues+PRs sorted by reactions, so specific technical terms produce
 # better signal than broad queries like "AI".
 github_keywords = [
-  "inference",       # deployment, serving, vLLM, TGI, llama.cpp, TensorRT
-  "fine-tuning",     # LoRA, QLoRA, PEFT, training infrastructure
-  "RAG",             # retrieval augmented generation
-  "agent",           # AI agents, tool use, function calling
-  "transformer",     # architecture, implementation
-  "quantization",    # GGUF, GPTQ, AWQ, model compression
-  "CUDA",            # GPU programming, kernels, Triton
-  "diffusion",       # image generation, Stable Diffusion
+  "LLM",           # ChatGPT, Claude, Gemini integrations
+  "agent",         # AI agents, autonomous coding
+  "RAG",           # retrieval augmented generation
+  "coding",        # developer tools, IDEs, editors
+  "CLI",           # command-line tools
+  "framework",     # popular frameworks and libraries
+  "open source",   # trending OSS projects
+  "API",           # developer services and SDKs
 ]
 prompt_template = "github_trending.md"
 top_n = 15
