@@ -1,5 +1,5 @@
 [Unit]
-Description=Personal AI Crypto Research Aggregator
+Description=BriefBot: AI news digest for Telegram
 After=network-online.target
 Wants=network-online.target
 

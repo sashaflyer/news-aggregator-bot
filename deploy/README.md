@@ -1,4 +1,4 @@
-# Deploying news-aggregator on a Linux VPS
+# Deploying BriefBot on a Linux VPS
 
 Tested against Debian 12 / Ubuntu 22.04+. Requires Python 3.12+.
 
