@@ -23,7 +23,7 @@ python -m aggregator                    # long-running
 pytest -q
 ```
 
-All 196 tests are offline. Network calls (RSS, Polymarket, HN, OpenAI, Telegram) are mocked via `respx` / `unittest.mock` — never require real keys to run the suite.
+All 243 tests are offline. Network calls (RSS, Polymarket, HN, OpenAI, Telegram) are mocked via `respx` / `unittest.mock` — never require real keys to run the suite.
 
 ## Layout
 
@@ -31,6 +31,8 @@ All 196 tests are offline. Network calls (RSS, Polymarket, HN, OpenAI, Telegram)
 aggregator/
   __main__.py        # entry: bot polling + scheduler in one event loop
   pipeline.py        # run_digest orchestration
+  ranking.py         # engagement scoring, dedup, per-author cap
+  text.py            # text chunking for Telegram message limits
   config.py          # pydantic-validated config loader
   storage.py         # SQLite layer
   scheduler.py       # APScheduler cron (timezone-explicit)
@@ -74,7 +76,7 @@ tests/               # mirrors aggregator/ structure
 | Add a topic | `config.toml` + `aggregator/prompts/<name>.md` |
 | Add a bot command | `aggregator/bot/commands/<name>.py` + entry in `COMMANDS` in `app.py` |
 | Add a source | `aggregator/sources/<name>.py` (extend `Source` ABC) + register in `pipeline.SOURCES` |
-| Change scoring/dedup | Look in `aggregator/vendor/last30days/` first — most logic is there |
+| Change scoring/dedup | `aggregator/ranking.py` (vendored logic in `vendor/last30days/`) |
 | Change deploy | `deploy/news-aggregator.service`, then update `deploy/README.md` |
 
 ## Things to avoid

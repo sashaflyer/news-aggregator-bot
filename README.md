@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-![Tests](https://img.shields.io/badge/tests-214%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen)
 ![Delivery](https://img.shields.io/badge/delivery-Telegram-26A5E4?logo=telegram&logoColor=white)
 
 [Quickstart](#-quickstart) · [Features](#-features) · [How it works](#-how-it-works) · [Deploy](#-deployment) · [Extend](#-extending)
@@ -68,6 +68,7 @@ Each `↗` is a clickable link to the source.
 
 | Command | What it does |
 |---------|-------------|
+| `/start` | Welcome message |
 | `/status` | Uptime, last runs, source health |
 | `/digest <topic>` | Run a digest now |
 | `/topics` | List configured topics |
@@ -184,7 +185,7 @@ Create `aggregator/sources/<name>.py` implementing the `Source` ABC. Register in
 pytest -q
 ```
 
-**214 tests, fully offline.** Every network call (RSS, Polymarket, HN, GitHub, OpenAI, Telegram) is mocked. No keys or connectivity required.
+**243 tests, fully offline.** Every network call (RSS, Polymarket, HN, GitHub, OpenAI, Telegram) is mocked. No keys or connectivity required.
 
 ## 📁 Project layout
 
@@ -192,6 +193,8 @@ pytest -q
 aggregator/
 ├── __main__.py           # entry: bot polling + scheduler in one event loop
 ├── pipeline.py           # run_digest orchestration
+├── ranking.py            # engagement scoring, dedup, per-author cap
+├── text.py               # text chunking for Telegram message limits
 ├── config.py             # pydantic-validated config loader
 ├── storage.py            # SQLite layer
 ├── scheduler.py          # APScheduler cron (timezone-explicit)
@@ -203,7 +206,7 @@ aggregator/
 ├── bot/                  # PTB Application + commands
 └── vendor/last30days/    # MIT-licensed upstream — do not hand-edit
 deploy/                   # systemd unit + install guide
-tests/                    # 214 offline tests
+tests/                    # 243 offline tests
 ```
 
 ## 📄 License
