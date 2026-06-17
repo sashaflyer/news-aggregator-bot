@@ -7,7 +7,7 @@ WORKED EXAMPLE (shape + style; the facts below are illustrative — do NOT copy 
 BEGIN EXAMPLE
 <b>🤖 What's new in AI</b>
 
-Anthropic shipped <a href="https://news.ycombinator.com/item?id=42000001">Claude Sonnet 4.7</a> with a 1M context window. A new open-weights coding model from Mistral <a href="https://news.ycombinator.com/item?id=42000002">matched GPT-4o on SWE-bench</a>. EU AI Act enforcement guidance arrived and several US firms paused EU rollouts.
+Anthropic shipped Claude Sonnet 4.7 with a 1M context window. A new open-weights coding model from Mistral matched GPT-4o on SWE-bench. EU AI Act enforcement guidance arrived and several US firms paused EU rollouts.
 
 <b>🔬 Research and releases</b>
 

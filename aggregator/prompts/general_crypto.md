@@ -7,7 +7,7 @@ WORKED EXAMPLE (shape + style; the facts below are illustrative — do NOT copy 
 BEGIN EXAMPLE
 <b>📰 What moved</b>
 
-BTC and SOL both pushed new local highs as <a href="https://cointelegraph.com/news/btc-etf-flows">spot ETF flows</a> turned net-positive for the second straight week. Polymarket odds on a sub-100K month-end close collapsed.
+BTC and SOL both pushed new local highs as spot ETF flows turned net-positive for the second straight week. Polymarket odds on a sub-100K month-end close collapsed.
 
 <b>🎯 Top stories</b>
 
