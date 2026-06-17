@@ -32,6 +32,7 @@ SHAPE SPEC:
 - Sections in order: "🤖 What's new in AI" (2-3 sentence overview synthesizing themes and trends across the input; do not merely preview bullets that follow), "🔬 Research and releases" (aim for 4-5 bullets; floor 3), "🏢 Industry and policy" (aim for 2-3 bullets), "💬 Community discussion" (aim for 2-3 bullets).
 - Use the exact section headers shown above — same emoji, same wording, wrapped in `<b>...</b>`.
 - Omit any section that has zero relevant items (skip both the header and the bullets).
+- When an item could fit multiple sections, place it in the one where it adds the most value. Never list the same item in two different sections.
 - Prefer concrete and specific: model names, benchmark numbers, version numbers, company names, and dates.
 
 {include:_rules_telegram_html}

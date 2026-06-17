@@ -5,7 +5,7 @@ FORMATTING RULES (critical):
 - Do NOT wrap your output in markdown code fences (no triple-backticks) or any other container. Begin your response directly with the first `<b>` tag.
 - Use the `•` character (U+2022) for bullets, not `-` or `*`.
 - Every sentence in the digest MUST end with a period. No exceptions.
-- Each bullet ends with a clickable link in Telegram HTML format: `<a href="https://full.url.here">↗</a>`. The link text is the up-right arrow character `↗` (U+2197) and nothing else. Exception: the "no notable activity" sentinel bullet in watchlist digests has no link (there is no item to cite).
+- Each bullet ends with a clickable link in Telegram HTML format: `<a href="https://full.url.here">↗</a>`. The link text is the up-right arrow character `↗` (U+2197) and nothing else.
 - Place exactly one space between the bullet sentence's terminal period and the `<a ...>↗</a>` link.
 - Overview paragraphs (the first paragraph under a section header) must NOT contain any links. Links belong only on bullets.
 - If an item has no url, OMIT the entire bullet. Do NOT invent or guess URLs. Never use a platform homepage as a stand-in.

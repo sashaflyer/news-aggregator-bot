@@ -111,6 +111,9 @@ def _to_item(raw: dict[str, Any], *, now: datetime, symbol: str | None = None) -
     meta: dict[str, Any] = {}
     if symbol:
         meta["watchlist_symbol"] = symbol
+    author = (raw.get("author") or "").strip()
+    if author:
+        meta["author"] = author
     return Item(
         id=f"rss:{raw_id}",
         source="rss",

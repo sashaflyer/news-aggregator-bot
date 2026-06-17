@@ -90,7 +90,7 @@ sources = ["rss", "polymarket", "hackernews"]
 rss_feeds = [
   "https://www.deepmind.google/blog/rss.xml",
   "https://openai.com/blog/rss.xml",
-  "https://simonwillison.net/atom/everything/",
+  # simonwillison.net is covered by ai_blogs - omit to avoid cross-topic dupes
   "https://stratechery.com/feed/",
   "https://www.ben-evans.com/benedictevans?format=rss",
   "https://github.blog/feed/",

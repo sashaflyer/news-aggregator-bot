@@ -26,7 +26,7 @@ SHAPE SPEC:
 - Sections in order: "📰 Top stories" (2-3 sentence overview synthesizing themes; do not merely preview bullets that follow, then aim for 5-6 bullets; floor 4), "🔧 Engineering and tools" (aim for 2-4 bullets).
 - Use the exact section headers shown above — same emoji, same wording, wrapped in `<b>...</b>`.
 - Omit any section that has zero relevant items (skip both the header and the bullets).
-- When an item could fit multiple sections, place it in the one where it adds the most value.
+- When an item could fit multiple sections, place it in the one where it adds the most value. Never list the same item in two different sections.
 - Prefer concrete and specific: model names, version numbers, company names, dates, and numbers.
 
 {include:_rules_telegram_html}
