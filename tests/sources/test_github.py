@@ -115,7 +115,7 @@ def test_to_item_maps_engagement():
         "reactions": {"total_count": 15},
         "comments": 8,
     }
-    item = _to_item(raw, rank=0)
+    item = _to_item(raw)
     assert item is not None
     assert item.engagement_raw["reactions"] == 15
     assert item.engagement_raw["score"] == 15
@@ -140,19 +140,19 @@ def test_to_item_detects_pull_request():
         "comments": 1,
         "pull_request": {"url": "https://api.github.com/repos/test/repo/pulls/42"},
     }
-    item = _to_item(raw, rank=0)
+    item = _to_item(raw)
     assert item is not None
     assert item.metadata["is_pr"] is True
 
 
 def test_to_item_returns_none_without_url():
     raw = {"id": 1, "title": "No URL", "created_at": "2026-06-16T12:00:00Z"}
-    assert _to_item(raw, rank=0) is None
+    assert _to_item(raw) is None
 
 
 def test_to_item_returns_none_without_date():
     raw = {"id": 1, "html_url": "https://github.com/x/y/issues/1", "title": "No date"}
-    assert _to_item(raw, rank=0) is None
+    assert _to_item(raw) is None
 
 
 def test_to_item_parses_created_at_as_aware_datetime():
@@ -165,7 +165,7 @@ def test_to_item_parses_created_at_as_aware_datetime():
         "reactions": {"total_count": 0},
         "comments": 0,
     }
-    item = _to_item(raw, rank=0)
+    item = _to_item(raw)
     assert item is not None
     assert item.created_at.year == 2026
     assert item.created_at.tzinfo is not None

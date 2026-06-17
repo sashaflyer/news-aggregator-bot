@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from aggregator.bot.app import build_application, publish_commands
 from aggregator.bot.digest_lock import init_locks
-from aggregator.config import load_config
+from aggregator.config import Config, load_config
 from aggregator.pipeline import run_digest
 from aggregator.scheduler import build_scheduler
 from aggregator.storage import Storage
@@ -65,7 +65,7 @@ def _resolve_data_dir(cfg_data_dir: str) -> Path:
     return Path(override) if override else Path(cfg_data_dir)
 
 
-def _bootstrap(config_path: str) -> tuple:
+def _bootstrap(config_path: str) -> tuple[Config, Storage]:
     load_dotenv()
     cfg = load_config(config_path)
     data_dir = _resolve_data_dir(cfg.storage.data_dir)

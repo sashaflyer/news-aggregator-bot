@@ -3,20 +3,28 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from telegram.ext import Application, CommandHandler, filters
+from telegram import Bot
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from aggregator.bot.commands.digest import handle_digest
 from aggregator.bot.commands.help import handle_help
+from aggregator.bot.commands.start import handle_start
 from aggregator.bot.commands.status import handle_status
 from aggregator.bot.commands.topics import handle_topics
 from aggregator.config import Config
+
+if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from aggregator.storage import Storage
 
 
 # Single source of truth for registered commands.
 # Each entry: (name, one-line description, handler).
 # /help renders this list. setMyCommands (Task 8) reads from it.
 COMMANDS = [
+    ("start",  "Start the bot",                    handle_start),
     ("status", "Bot uptime, last runs, source health",      handle_status),
     ("digest", "Run a digest now: /digest <topic_id>",      handle_digest),
     ("topics", "List configured topics, schedule, sources", handle_topics),
@@ -24,7 +32,7 @@ COMMANDS = [
 ]
 
 
-def build_application(*, storage, scheduler=None, cfg: Config) -> Application:
+def build_application(*, storage: Storage, scheduler: AsyncIOScheduler | None = None, cfg: Config) -> Application:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
 
@@ -64,10 +72,22 @@ def build_application(*, storage, scheduler=None, cfg: Config) -> Application:
     for name, _description, handler in COMMANDS:
         app.add_handler(CommandHandler(name, handler, filters=chat_filter))
 
+    async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        import logging
+        from telegram.error import RetryAfter, TimedOut
+
+        log = logging.getLogger(__name__)
+        if isinstance(context.error, (RetryAfter, TimedOut)):
+            log.warning("telegram rate limit or timeout: %s", context.error)
+            return
+        log.exception("unhandled error in bot handler", exc_info=context.error)
+
+    app.add_error_handler(_error_handler)
+
     return app
 
 
-async def publish_commands(bot) -> None:
+async def publish_commands(bot: Bot) -> None:
     """Tell Telegram about our command set so the `/` menu shows autocomplete.
 
     Best-effort: a failure here (network, bad token, Telegram outage) is

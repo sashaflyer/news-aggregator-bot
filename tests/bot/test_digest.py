@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from aggregator.bot.commands.digest import handle_digest
+from aggregator.bot.commands.digest import _last_run, handle_digest
 from aggregator.bot.digest_lock import _topic_locks, lock_for
 from aggregator.config import TopicConfig
 from aggregator.pipeline import RunResult
@@ -26,8 +26,10 @@ class _CfgStub:
 @pytest.fixture(autouse=True)
 def clean_locks():
     _topic_locks.clear()
+    _last_run.clear()
     yield
     _topic_locks.clear()
+    _last_run.clear()
 
 
 def make_update(chat_id: int):
@@ -84,7 +86,7 @@ async def test_digest_unknown_topic_replies_with_usage():
         await handle_digest(upd, ctx)
     upd.message.reply_text.assert_awaited_once()
     text = upd.message.reply_text.await_args.args[0]
-    assert "Usage" in text
+    assert "Unknown topic" in text
     assert "crypto_general" in text
     run_d.assert_not_called()
 
@@ -170,14 +172,10 @@ async def test_digest_pipeline_exception_is_reported_and_lock_released():
         await handle_digest(upd, ctx)
     # At least: ack + error message.
     texts = [c.args[0] for c in upd.message.reply_text.await_args_list]
-    assert any("RuntimeError" in t for t in texts)
-    # `<` from the exception message must be HTML-escaped in any HTML-mode reply,
-    # otherwise Telegram would reject the parse and force the plain-text fallback.
-    html_replies = [c for c in upd.message.reply_text.await_args_list
-                    if c.kwargs.get("parse_mode") == "HTML"]
-    assert html_replies, "error reply must use HTML parse mode"
-    for c in html_replies:
-        assert "<details>" not in c.args[0]
-        assert "&lt;details&gt;" in c.args[0]
+    assert any("Digest failed" in t for t in texts)
+    # Generic message — no internal details leaked.
+    for t in texts:
+        assert "RuntimeError" not in t
+        assert "boom" not in t
     # Lock must be free after exception.
     assert not lock_for("crypto_general").locked()

@@ -91,7 +91,7 @@ async def _search_github(
     return data.get("items", [])
 
 
-def _to_item(raw: dict[str, Any], rank: int) -> Item | None:
+def _to_item(raw: dict[str, Any]) -> Item | None:
     """Map a GitHub Search API item to our Item. Returns None if unparseable."""
     html_url = raw.get("html_url", "")
     if not html_url:
@@ -181,8 +181,8 @@ class GithubSource(Source):
             if isinstance(raws, Exception):
                 log.warning("github subquery failed: %s", raws)
                 continue
-            for rank, r in enumerate(raws):
-                it = _to_item(r, rank)
+            for r in raws:
+                it = _to_item(r)
                 if it is not None and it.id not in seen_ids:
                     seen_ids.add(it.id)
                     items.append(it)

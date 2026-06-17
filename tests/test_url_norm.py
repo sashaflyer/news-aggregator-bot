@@ -1,4 +1,4 @@
-from aggregator.url_norm import canonicalize
+from aggregator.url_norm import canonicalize, dedup_key
 
 
 def test_trailing_slash_collapsed():
@@ -21,3 +21,22 @@ def test_scheme_lowered():
 
 def test_fragment_dropped():
     assert canonicalize("https://x/a#top") == canonicalize("https://x/a")
+
+
+def test_dedup_key_normal_url():
+    item = {"url": "https://X.Example/a/?utm_source=z", "id": "r:1"}
+    assert dedup_key(item) == "https://x.example/a"
+
+
+def test_dedup_key_no_url_falls_back_to_id():
+    item = {"url": "", "id": "polymarket:abc"}
+    assert dedup_key(item) == "id:polymarket:abc"
+
+
+def test_dedup_key_neither_url_nor_id():
+    item = {"url": "", "id": ""}
+    assert dedup_key(item) is None
+
+
+def test_dedup_key_empty_dict():
+    assert dedup_key({}) is None

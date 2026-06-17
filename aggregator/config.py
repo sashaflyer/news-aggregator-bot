@@ -61,8 +61,8 @@ class WatchEntry(BaseModel):
 
     ticker: str
     aliases: list[str] = Field(default_factory=list)
-    feeds: list[str] = Field(default_factory=list)
-    search_feeds: list[str] = Field(default_factory=list)
+    feeds: list[str] = Field(default_factory=list, max_length=10)
+    search_feeds: list[str] = Field(default_factory=list, max_length=5)
 
     @field_validator("ticker")
     @classmethod
@@ -106,7 +106,7 @@ class _BaseTopicConfig(BaseModel):
     polymarket_tags: list[str] = Field(default_factory=list)
     hn_keywords: list[str] = Field(default_factory=list)
     github_keywords: list[str] = Field(default_factory=list)
-    rss_feeds: list[str] = Field(default_factory=list)
+    rss_feeds: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("schedule")
     @classmethod
@@ -207,7 +207,6 @@ class ScoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dedup_window_days: int = Field(ge=1, le=365)
-    min_score: float = 0.0
     per_author_cap: int = Field(ge=1)
     weight_upvotes: float = 1.0
     weight_score: float = 1.0

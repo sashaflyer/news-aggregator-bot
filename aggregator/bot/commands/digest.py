@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from html import escape as _html_escape
+import time
 
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from aggregator.bot._authz import is_authorized
@@ -14,7 +15,20 @@ from aggregator.pipeline import run_digest
 
 log = logging.getLogger(__name__)
 
-_ERROR_MSG_MAX = 300
+_COOLDOWN_SECONDS = 300
+_last_run: dict[str, float] = {}
+
+
+async def _typing_loop(bot, chat_id: int, stop: asyncio.Event) -> None:
+    while not stop.is_set():
+        try:
+            await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        except Exception:
+            pass
+        try:
+            await asyncio.sleep(4)
+        except asyncio.CancelledError:
+            break
 
 
 async def handle_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -25,21 +39,32 @@ async def handle_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     storage = context.bot_data["storage"]
     args = list(context.args or [])
 
-    if not args or args[0] not in cfg.topics:
+    if not args:
         topics_list = ", ".join(sorted(cfg.topics.keys()))
         await update.message.reply_text(
             f"Usage: /digest <topic_id>\nConfigured topics: {topics_list}"
         )
         return
+    if args[0] not in cfg.topics:
+        topics_list = ", ".join(sorted(cfg.topics.keys()))
+        await update.message.reply_text(
+            f"Unknown topic: {args[0]}\nConfigured topics: {topics_list}"
+        )
+        return
 
     topic_id = args[0]
+
+    now = time.monotonic()
+    last = _last_run.get(topic_id, 0.0)
+    remaining = _COOLDOWN_SECONDS - (now - last)
+    if remaining > 0:
+        await update.message.reply_text(
+            f"Digest for {topic_id} was run recently. "
+            f"Try again in {int(remaining)}s."
+        )
+        return
+
     lock = lock_for(topic_id)
-    # Effectively non-blocking acquire: wait_for with a tiny timeout returns
-    # immediately if the lock is held by someone else, avoiding the TOCTOU
-    # window of a separate .locked() check (safe even if PTB
-    # concurrent_updates is enabled later). Note: timeout=0 itself always
-    # raises TimeoutError per CPython's wait_for special case, so we use a
-    # very small positive value.
     try:
         await asyncio.wait_for(lock.acquire(), timeout=0.001)
     except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -50,13 +75,22 @@ async def handle_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         await update.message.reply_text(f"Running digest for {topic_id}…")
+        typing_stop = asyncio.Event()
+        typing_task = asyncio.create_task(
+            _typing_loop(update.message.bot, update.effective_chat.id, typing_stop)
+        )
         await run_digest(topic_id, cfg, storage, trigger="manual")
-    except Exception as e:
+        _last_run[topic_id] = time.monotonic()
+    except Exception:
         log.exception("/digest for %s failed", topic_id)
-        msg = (str(e) or "")[:_ERROR_MSG_MAX]
         await update.message.reply_text(
-            f"Digest failed: <b>{type(e).__name__}</b>: {_html_escape(msg)}",
-            parse_mode="HTML",
+            "Digest failed. Check server logs for details."
         )
     finally:
+        typing_stop.set()
+        typing_task.cancel()
+        try:
+            await typing_task
+        except asyncio.CancelledError:
+            pass
         lock.release()

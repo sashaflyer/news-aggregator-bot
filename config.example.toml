@@ -3,7 +3,6 @@ timezone = "UTC"
 
 [scoring]
 dedup_window_days = 7
-min_score = 0.0
 per_author_cap = 3
 
 [synth]

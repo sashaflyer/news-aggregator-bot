@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-ALLOWED_TAGS = frozenset({"b", "a"})
+ALLOWED_TAGS = frozenset({"b", "a", "i", "code", "pre"})
 _TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
 _HREF_RE = re.compile(r'href="(https?://[^"]+)"')
 
@@ -45,4 +45,4 @@ def sanitize_outgoing(text: str) -> str:
     return _TAG_RE.sub(_replace, text)
 
 
-HTML_ENTITY_RE = re.compile(r"&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);?")
+HTML_ENTITY_RE = re.compile(r"&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);")

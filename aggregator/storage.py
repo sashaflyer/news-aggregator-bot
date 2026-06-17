@@ -8,7 +8,9 @@ command. Topic seeding is idempotent.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import stat
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -140,6 +142,16 @@ class Storage:
     def __init__(self, path: str | Path):
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(self._path.parent, stat.S_IRWXU)
+        if self._path.exists():
+            os.chmod(self._path, stat.S_IRUSR | stat.S_IWUSR)
+        self._conn: sqlite3.Connection | None = None
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
 
     @property
     def path(self) -> str:
@@ -147,13 +159,13 @@ class Storage:
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(str(self._path))
-        conn.row_factory = sqlite3.Row
+        conn = self._get_conn()
         try:
             yield conn
             conn.commit()
-        finally:
-            conn.close()
+        except BaseException:
+            conn.rollback()
+            raise
 
     def init_schema(self) -> None:
         """Initialize vendored schema then add project-specific tables."""
@@ -352,20 +364,20 @@ class Storage:
         Cursor.rowcount, so re-deliveries don't inflate the count).
         """
         ts = _iso(at)
+        rows = []
+        for it in items:
+            key = dedup_key(it)
+            if not key:
+                continue
+            rows.append((topic_id, str(it.get("id", "")), key, it.get("title") or "", ts))
         with self._connect() as conn:
-            n = 0
-            for it in items:
-                key = dedup_key(it)
-                if not key:
-                    continue
-                cur = conn.execute(
-                    """INSERT OR IGNORE INTO delivered_findings
-                           (topic_id, item_id, url, title, delivered_at)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (topic_id, str(it.get("id", "")), key, it.get("title") or "", ts),
-                )
-                n += cur.rowcount or 0
-            return n
+            conn.executemany(
+                """INSERT OR IGNORE INTO delivered_findings
+                       (topic_id, item_id, url, title, delivered_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                rows,
+            )
+            return len(rows)
 
     def recently_delivered_urls(
         self,

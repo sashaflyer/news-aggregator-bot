@@ -10,7 +10,8 @@ from typing import Any
 import httpx
 
 from aggregator.config import Config
-from aggregator.delivery._html_filter import ALLOWED_TAGS, HTML_ENTITY_RE, sanitize_outgoing
+from aggregator.delivery._html_filter import sanitize_outgoing
+from aggregator.text import chunk_text, utf16_len, find_safe_cut
 
 log = logging.getLogger(__name__)
 
@@ -25,80 +26,11 @@ _BACKOFF_BASE = 2.0
 # 401: bad token (rotated/revoked). 403: bot blocked or kicked. 404: bad chat id.
 _NON_RETRIABLE_STATUSES = frozenset({401, 403, 404})
 
-
-def _utf16_len(s: str) -> int:
-    return len(s.encode("utf-16-le")) // 2
-
-
-def _find_safe_cut(text: str, hard_cut: int) -> int:
-    """Return a cut position in (0, hard_cut] that doesn't split an HTML entity
-    or an unclosed tag. Prefers the last </tag> in the window, then a paragraph
-    / line / sentence break. Returns hard_cut unchanged as a last resort.
-    """
-    if hard_cut >= len(text):
-        return len(text)
-    if hard_cut <= 0:
-        return hard_cut
-
-    # 1) Avoid splitting an HTML entity (e.g. &amp; / &#x27;) at the boundary.
-    for end in range(hard_cut, max(hard_cut - 32, 0), -1):
-        if text[end - 1] != ";":
-            continue
-        amp = text.rfind("&", 0, end)
-        if amp == -1:
-            continue
-        if HTML_ENTITY_RE.fullmatch(text[amp:end]):
-            continue
-        return end
-
-    # 2) Prefer the last </tag> in the window — keeps every chunk well-formed.
-    best: int | None = None
-    for tag in ALLOWED_TAGS:
-        close = text.rfind(f"</{tag}>", 0, hard_cut)
-        if close == -1:
-            continue
-        candidate = close + len(f"</{tag}>")
-        if best is None or candidate > best:
-            best = candidate
-    if best is not None and best > 0:
-        return best
-
-    # 3) Fall back to natural separators, then to hard_cut.
-    for sep in ("\n\n", "\n", ". "):
-        idx = text.rfind(sep, 0, hard_cut)
-        if idx > 0:
-            return idx + len(sep)
-    return hard_cut
-
-
-def _chunk_body(text: str, limit: int = _TG_HARD_LIMIT_UTF16 - _SUFFIX_RESERVE) -> list[str]:
-    """Split `text` into chunks that each fit `limit` UTF-16 code units.
-
-    Returns *bodies only* — page counters are appended at send time so the
-    plain-text fallback (which strips parse_mode) doesn't render `<i>` as
-    literal text. Each chunk is HTML-safe by construction: cuts never split
-    an entity or an unclosed tag, so the downstream ``sanitize_outgoing``
-    can't silently delete text.
-    """
-    if _utf16_len(text) <= limit:
-        return [text]
-    chunks: list[str] = []
-    remaining = text
-    while _utf16_len(remaining) > limit:
-        # Binary search the largest prefix that fits the UTF-16 budget.
-        lo, hi = 0, len(remaining)
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if _utf16_len(remaining[:mid]) <= limit:
-                lo = mid
-            else:
-                hi = mid - 1
-        cut = _find_safe_cut(remaining, lo)
-        chunks.append(remaining[:cut].rstrip())
-        remaining = remaining[cut:].lstrip()
-    if remaining:
-        chunks.append(remaining)
-    return chunks
+# Backward-compatible aliases: tests and bot commands reference these as
+# telegram._chunk_body etc. Canonical implementations live in text.py.
+_utf16_len = utf16_len
+_find_safe_cut = find_safe_cut
+_chunk_body = chunk_text
 
 
 def _page_counter(idx: int, total: int, parse_mode: str) -> str:
@@ -214,7 +146,7 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
 
     # Split into bodies first; the page counter is added per-send so a
     # parse_mode=plain-text fallback can render it without literal HTML tags.
-    bodies = _chunk_body(text)
+    bodies = chunk_text(text)
     total = len(bodies)
     ids: list[int] = []
     async with httpx.AsyncClient() as client:
@@ -230,5 +162,15 @@ async def send_digest(text: str, *, topic_id: str, cfg: Config) -> list[int]:
                           "(dropped %d remaining chunk(s), first %d chars: %r)",
                           i + 1, total, total - i - 1,
                           len(body), body[:200])
+                if mid is None:
+                    try:
+                        notice = f"Digest truncated: chunk {i+1}/{total} failed. {total - i - 1} chunk(s) dropped."
+                        await _post(client, token, {
+                            "chat_id": chat_id,
+                            "text": notice,
+                            "disable_web_page_preview": True,
+                        })
+                    except Exception:
+                        pass
                 break
     return ids

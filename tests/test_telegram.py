@@ -145,8 +145,8 @@ async def test_non_retriable_4xx_short_circuits(cfg):
         )
         msg_ids = await telegram.send_digest("hi", topic_id="crypto_general", cfg=cfg)
         assert msg_ids == []
-        # Exactly one attempt, no retry loop.
-        assert route.call_count == 1
+        # One attempt for the chunk + one for the truncation notice.
+        assert route.call_count == 2
 
 
 @pytest.mark.asyncio

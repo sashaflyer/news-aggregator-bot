@@ -15,3 +15,6 @@ from typing import Final
 # ``[topics.<id>].sources = ["rss", "hackernews", ...]``. Keep this set
 # authoritative: ``pipeline.SOURCES`` MUST be a superset-by-key.
 KNOWN_SOURCE_KEYS: Final[frozenset[str]] = frozenset({"rss", "polymarket", "hackernews", "github"})
+
+# The matching instance dict lives in pipeline.SOURCES (aggregator/pipeline.py).
+# Both must stay in sync; pipeline.py has a runtime check that enforces this.

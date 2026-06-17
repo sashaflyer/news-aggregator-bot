@@ -21,6 +21,14 @@ from aggregator.vendor.last30days import hackernews as _upstream
 log = logging.getLogger(__name__)
 
 
+_HN_SEM = asyncio.Semaphore(5)
+
+
+async def _fetch_hn_limited(query: str, limit: int = 15) -> list[dict[str, Any]]:
+    async with _HN_SEM:
+        return await asyncio.to_thread(_fetch_hn, query, limit)
+
+
 def _fetch_hn(query: str, limit: int = 15) -> list[dict[str, Any]]:
     """Algolia search for the last 24h, normalized into a list of dicts.
 
@@ -88,7 +96,7 @@ class HnSource(Source):
 
         # Concurrent search per keyword; sequential awaited 1-3s each.
         results = await asyncio.gather(
-            *(asyncio.to_thread(_fetch_hn, q, 15) for q in all_queries),
+            *(_fetch_hn_limited(q, 15) for q in all_queries),
             return_exceptions=True,
         )
         items: list[Item] = []

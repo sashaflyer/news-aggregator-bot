@@ -21,7 +21,9 @@ def load(name: str) -> str:
     raw = target.read_text(encoding="utf-8")
 
     def _expand(m: re.Match[str]) -> str:
-        partial = (PROMPTS_DIR / f"{m.group(1)}.md").read_text(encoding="utf-8")
-        return partial.rstrip()
+        partial_path = (PROMPTS_DIR / f"{m.group(1)}.md").resolve()
+        if not partial_path.is_relative_to(PROMPTS_DIR.resolve()):
+            raise ValueError(f"include partial escapes PROMPTS_DIR: {m.group(1)!r}")
+        return partial_path.read_text(encoding="utf-8").rstrip()
 
     return _INCLUDE_RE.sub(_expand, raw)

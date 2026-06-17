@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from aggregator.bot._authz import is_authorized
-from aggregator.delivery.telegram import _chunk_body
+from aggregator.text import chunk_text
 
 
 async def handle_topics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -31,5 +31,5 @@ async def handle_topics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         lines.append("")
 
     text = "\n".join(lines).rstrip()
-    for chunk in _chunk_body(text):
+    for chunk in chunk_text(text):
         await update.message.reply_text(chunk, parse_mode="HTML")

@@ -133,45 +133,55 @@ class RssSource(Source):
         now = datetime.now(timezone.utc)
         items: list[Item] = []
 
+        tasks = []
+        task_meta: list[str] = []
         if feeds:
-            results = await _gather_urls(feeds)
-            untagged: list[Item] = []
-            for raws in results:
-                if isinstance(raws, Exception):
-                    log.warning("rss feed fetch failed: %s", raws)
-                    continue
-                for r in raws:
-                    it = _to_item(r, now=now)
-                    if it is not None:
-                        untagged.append(it)
-            if symbols:
-                untagged = [it for it in untagged if matches_any_symbol(it, symbols)]
-            items.extend(untagged)
-
+            tasks.append(_gather_urls(feeds))
+            task_meta.append("broad")
         pairs = [(sym, u) for sym, urls in symbol_feeds.items() for u in urls]
         if pairs:
-            results = await _gather_urls([u for _, u in pairs])
-            for (sym, _u), raws in zip(pairs, results):
-                if isinstance(raws, Exception):
-                    log.warning("rss symbol feed fetch failed (%s): %s", sym, raws)
-                    continue
-                for r in raws:
-                    it = _to_item(r, now=now, symbol=sym)
-                    if it is not None:
-                        items.append(it)
-
-        # Per-symbol *search* feeds (e.g. Google News queries): tagged like
-        # symbol feeds, but alias-filtered by the symbol's own terms because a
-        # keyword search is not the curation a real outlet tag feed is.
+            tasks.append(_gather_urls([u for _, u in pairs]))
+            task_meta.append("symbol")
         search_feeds = queries.get("rss_search_feeds") or []
         if search_feeds:
-            results = await _gather_urls([e["url"] for e in search_feeds])
-            for e, raws in zip(search_feeds, results):
-                if isinstance(raws, Exception):
-                    log.warning("rss search feed fetch failed (%s): %s", e["symbol"], raws)
+            tasks.append(_gather_urls([e["url"] for e in search_feeds]))
+            task_meta.append("search")
+
+        if tasks:
+            all_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for meta, results in zip(task_meta, all_results):
+                if isinstance(results, Exception):
+                    log.warning("rss %s batch failed: %s", meta, results)
                     continue
-                for r in raws:
-                    it = _to_item(r, now=now, symbol=e["symbol"])
-                    if it is not None and matches_any_symbol(it, e["terms"]):
-                        items.append(it)
+                if meta == "broad":
+                    untagged: list[Item] = []
+                    for raws in results:
+                        if isinstance(raws, Exception):
+                            log.warning("rss feed fetch failed: %s", raws)
+                            continue
+                        for r in raws:
+                            it = _to_item(r, now=now)
+                            if it is not None:
+                                untagged.append(it)
+                    if symbols:
+                        untagged = [it for it in untagged if matches_any_symbol(it, symbols)]
+                    items.extend(untagged)
+                elif meta == "symbol":
+                    for (sym, _u), raws in zip(pairs, results):
+                        if isinstance(raws, Exception):
+                            log.warning("rss symbol feed fetch failed (%s): %s", sym, raws)
+                            continue
+                        for r in raws:
+                            it = _to_item(r, now=now, symbol=sym)
+                            if it is not None:
+                                items.append(it)
+                elif meta == "search":
+                    for e, raws in zip(search_feeds, results):
+                        if isinstance(raws, Exception):
+                            log.warning("rss search feed fetch failed (%s): %s", e["symbol"], raws)
+                            continue
+                        for r in raws:
+                            it = _to_item(r, now=now, symbol=e["symbol"])
+                            if it is not None and matches_any_symbol(it, e["terms"]):
+                                items.append(it)
         return items

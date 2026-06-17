@@ -13,7 +13,6 @@ timezone = "UTC"
 
 [scoring]
 dedup_window_days = 7
-min_score = 0.0
 per_author_cap = 3
 
 [synth]
@@ -313,7 +312,6 @@ def test_top_level_config_rejects_unknown_section(tmp_path):
 timezone = "UTC"
 [scoring]
 dedup_window_days = 7
-min_score = 0.0
 per_author_cap = 3
 [synth]
 model = "gpt-test"
