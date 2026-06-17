@@ -1,6 +1,6 @@
 [project]
 name = "news-aggregator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Personal AI crypto research aggregator with Telegram delivery"
 requires-python = ">=3.12"
 license = { text = "MIT" }

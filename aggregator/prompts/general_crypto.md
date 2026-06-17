@@ -28,6 +28,5 @@ SHAPE SPEC:
 - Sections in order: "📰 What moved" (2-3 sentence overview synthesizing market themes — link the most important items inline; do not merely preview bullets that follow), "🎯 Top stories" (aim for 5-6 bullets; floor 4), "📊 Polymarket signals" (aim for 2-3 bullets when markets are present).
 - Use the exact section headers shown above — same emoji, same wording, wrapped in `<b>...</b>`.
 - If the Polymarket section has zero relevant input items, OMIT the entire section (header included).
-- Within each section, prefix each bullet with a category marker: 🔴 for major announcements, 🟡 for significant developments, 🔵 for interesting but less urgent stories.
 
 {include:_rules_telegram_html}
