@@ -74,8 +74,14 @@ of it so a single missed ping doesn't trigger a restart.
 cd /opt/news-aggregator
 sudo -u news-bot git pull
 sudo -u news-bot .venv/bin/pip install -e .
+sudo -u news-bot .venv/bin/python scripts/merge_config.py
 sudo systemctl restart news-aggregator
 ```
+
+The `merge_config.py` step adds any new topics from `config.example.toml`
+that are missing in your `config.toml`. Existing topics and all non-topic
+settings are preserved. Safe to run repeatedly — it is a no-op when
+everything is already present.
 
 ## Backing up
 
