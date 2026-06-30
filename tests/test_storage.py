@@ -10,7 +10,7 @@ from aggregator.storage import Storage
 
 def test_iso_rejects_naive_datetime():
     from aggregator.storage import _iso
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         _iso(datetime(2025, 1, 1))
 
 

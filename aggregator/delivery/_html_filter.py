@@ -11,7 +11,7 @@ import re
 
 ALLOWED_TAGS = frozenset({"b", "a", "i", "code", "pre"})
 _TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
-_HREF_RE = re.compile(r"""<a\s[^>]*?href=(["'])(.*?)\1[^>]*?>""", re.I)
+_HREF_RE = re.compile(r'href=(["\'])(https?://[^"\']*)\1')
 
 
 def sanitize_outgoing(text: str) -> str:
@@ -42,7 +42,7 @@ def sanitize_outgoing(text: str) -> str:
             if a_open_depth > 0:
                 return ""
             a_open_depth += 1
-            return f'<a href="{href.group(1)}">'
+            return f'<a href="{href.group(2)}">'
         return f"<{slash}{tag}>"
 
     return _TAG_RE.sub(_replace, text)

@@ -30,21 +30,21 @@ def _extract_topic_block(text: str, topic: str) -> str:
     (or end-of-file). Nested ``[[topics.<topic>....]]`` arrays are included.
     """
     header = _topic_header(topic)
-    # Use regex that matches header at start of line followed by newline
-    # to avoid false-matching prefix names (e.g., crypto_general matching
-    # inside crypto_general_extra).
+    # Find header at start of line to avoid false-matching prefix names
+    # (e.g., crypto_general matching inside crypto_general_extra).
     pattern = re.compile(rf"^{re.escape(header)}\s*$", re.MULTILINE)
     match = pattern.search(text)
     if not match:
         return ""
-    start = match.start() + 1  # skip leading newline
+    # Start from the beginning of the matched line
+    start = match.start()
 
     # Find the next top-level section header after this block.
-    rest = text[start + len(header) + 1:]
+    rest = text[start + len(header):]
     # A top-level header is a ``[`` at the start of a line that is NOT
     # an array-of-tables ``[[`` for this topic.
     m = re.search(r"^\[(?!\[)", rest, re.MULTILINE)
-    end = start + len(header) + 1 + m.start() if m else len(text)
+    end = start + len(header) + m.start() if m else len(text)
     return text[start:end].rstrip() + "\n"
 
 
