@@ -171,8 +171,8 @@ def test_synthesize_does_not_overescape_apostrophes(cfg):
 
 
 def test_synthesize_projects_items_to_minimal_fields(cfg):
-    """The LLM payload should carry only the fields it uses (source/title/text/url,
-    plus watchlist_symbol when present) — not id/engagement_raw/created_at/metadata.
+    """The LLM payload should carry only the fields it uses (source/title/text/url/
+    engagement_raw, plus watchlist_symbol when present) — not id/created_at/metadata.
     """
     from aggregator import synth
 
@@ -193,9 +193,8 @@ def test_synthesize_projects_items_to_minimal_fields(cfg):
 
     user_msg = fake_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
     payload = json.loads(user_msg.split("ITEMS (JSON):\n", 1)[1])
-    assert set(payload[0].keys()) == {"source", "title", "text", "url", "watchlist_symbol"}
+    assert set(payload[0].keys()) == {"source", "title", "text", "url", "engagement_raw", "watchlist_symbol"}
     assert payload[0]["watchlist_symbol"] == "SOL"
-    assert "engagement_raw" not in user_msg
     assert "rss:abc" not in user_msg  # raw id dropped
 
 

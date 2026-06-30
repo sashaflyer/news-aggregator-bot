@@ -78,7 +78,7 @@ def _sanitize_for_html(item_dict: dict[str, Any]) -> dict[str, Any]:
 # Fields the LLM actually uses. Dropping id/engagement_raw/created_at/metadata
 # trims input tokens (up to max_input_items per run) and removes misleading
 # signals (RSS "engagement" is a recency score, not votes).
-_LLM_FIELDS = ("source", "title", "text", "url")
+_LLM_FIELDS = ("source", "title", "text", "url", "engagement_raw")
 
 
 def _project_for_llm(item_dict: dict[str, Any]) -> dict[str, Any]:
