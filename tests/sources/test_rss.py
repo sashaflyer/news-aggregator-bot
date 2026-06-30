@@ -10,6 +10,7 @@ import respx
 from aggregator.sources import rss as rss_module
 from aggregator.sources.rss import (
     RssSource, _to_item, _parse_entries, _gather_urls, _UA, _RECENCY_BASE,
+    _validate_url,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "rss_sample.xml"
@@ -195,3 +196,22 @@ async def test_fetch_sends_user_agent_header():
         with patch("aggregator.sources.rss._parse_entries", return_value=[]):
             await RssSource().fetch({"rss_feeds": [url]})
     assert route.calls[0].request.headers["User-Agent"] == _UA
+
+
+@pytest.mark.parametrize("url", [
+    "file:///etc/passwd",
+    "ftp://example.com/file.txt",
+    "gopher://example.com",
+])
+def test_validate_url_blocks_ssrf_schemes(url):
+    with pytest.raises(ValueError, match="Blocked URL scheme"):
+        _validate_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/feed.xml",
+    "http://localhost:8080/rss",
+    "HTTP://EXAMPLE.COM/feed",  # case-insensitive scheme
+])
+def test_validate_url_allows_http_schemes(url):
+    _validate_url(url)  # should not raise

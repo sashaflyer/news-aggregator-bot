@@ -30,7 +30,7 @@ from aggregator.delivery.telegram import send_digest
 
 log = logging.getLogger(__name__)
 
-_PRE_CAP_MULTIPLIER = 4  # Safety margin for pre-dedup cap
+_PRE_CAP_MULTIPLIER = 4  # dedup removes ~75% of items; 4x covers that headroom
 
 # Source registry: keys MUST match KNOWN_SOURCE_KEYS from sources.registry.
 # Adding a new source = (1) define the adapter, (2) add the key to

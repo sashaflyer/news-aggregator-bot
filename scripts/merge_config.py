@@ -40,10 +40,10 @@ def _extract_topic_block(text: str, topic: str) -> str:
     start = match.start()
 
     # Find the next top-level section header after this block.
-    rest = text[start + len(header):]
+    after_header = text[start + len(header):]
     # A top-level header is a ``[`` at the start of a line that is NOT
     # an array-of-tables ``[[`` for this topic.
-    m = re.search(r"^\[(?!\[)", rest, re.MULTILINE)
+    m = re.search(r"^\[(?!\[)", after_header, re.MULTILINE)
     end = start + len(header) + m.start() if m else len(text)
     return text[start:end].rstrip() + "\n"
 

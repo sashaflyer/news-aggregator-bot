@@ -114,6 +114,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 cursor = conn.execute(
                     "SELECT id, topic_id, url FROM delivered_findings"
                 )
+                # NOTE: `seen` scales with unique (topic_id, url) pairs, not
+                # batch size.  For a table with N rows this dict is O(N) in the
+                # worst case (all unique URLs) and costs roughly 80–120 bytes
+                # per entry.  This is acceptable for the expected data volumes
+                # of a single-operator bot (≤100 K rows).
                 seen: dict[tuple[str, str], int] = {}
                 batch_size = 1000
                 while True:

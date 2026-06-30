@@ -98,7 +98,7 @@ async def _gather_urls(urls: list[str]) -> list[list[dict[str, Any]] | Exception
     to the same host (e.g. multiple tag feeds under cointelegraph.com) reuse
     a TCP/TLS connection instead of paying handshake cost per fetch.
     """
-    limits = httpx.Limits(max_connections=_MAX_CONNECTIONS, max_keepalive_connections=min(5, _MAX_CONNECTIONS))
+    limits = httpx.Limits(max_connections=_MAX_CONNECTIONS, max_keepalive_connections=5)
     timeout = httpx.Timeout(_HTTP_TIMEOUT_S)
     async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
         return await asyncio.gather(

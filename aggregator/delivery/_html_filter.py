@@ -11,7 +11,7 @@ import re
 
 ALLOWED_TAGS = frozenset({"b", "a", "i", "code", "pre"})
 _TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
-_HREF_RE = re.compile(r'href=(["\'])(https?://[^"\']*)\1')
+_HREF_RE = re.compile(r'href=(["\'])(https?://[^"\']*)\1', re.I)
 
 
 def sanitize_outgoing(text: str) -> str:
