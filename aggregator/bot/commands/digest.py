@@ -77,7 +77,7 @@ async def handle_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(f"Running digest for {topic_id}…")
         typing_stop = asyncio.Event()
         typing_task = asyncio.create_task(
-            _typing_loop(update.message.bot, update.effective_chat.id, typing_stop)
+            _typing_loop(context.bot, update.effective_chat.id, typing_stop)
         )
         await run_digest(topic_id, cfg, storage, trigger="manual")
         _last_run[topic_id] = time.monotonic()
