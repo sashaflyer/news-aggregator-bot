@@ -3,11 +3,11 @@ timezone = "UTC"
 
 [scoring]
 dedup_window_days = 7
-per_author_cap = 3
+per_author_cap = 4
 
 [synth]
 model = "gpt-5.4-mini"
-max_input_items = 30
+max_input_items = 40
 max_output_tokens = 8192
 
 [telegram]
@@ -33,7 +33,7 @@ rss_feeds = [
 polymarket_tags = ["crypto", "bitcoin", "ethereum"]
 hn_keywords = ["bitcoin", "ethereum", "Solana", "stablecoin", "defi", "Coinbase", "Binance", "Tether", "ETF", "rollup"]
 prompt_template = "general_crypto.md"
-top_n = 15
+top_n = 20
 schedule = "10 5,17 * * *"
 
 [topics.crypto_watchlist]
@@ -54,7 +54,7 @@ rss_feeds = [
 ]
 polymarket_tags = ["crypto"]
 prompt_template = "watchlist.md"
-per_symbol_top_n = 5
+per_symbol_top_n = 6
 schedule = "15 5,17 * * *"
 
   [[topics.crypto_watchlist.watch]]
@@ -99,7 +99,7 @@ rss_feeds = [
 polymarket_tags = ["OpenAI", "Anthropic", "Claude", "AGI"]
 hn_keywords = ["LLM", "Claude", "GPT", "Anthropic", "OpenAI", "Gemini", "Grok", "xAI", "DeepMind", "agent", "RAG", "Hugging Face"]
 prompt_template = "ai_general.md"
-top_n = 15
+top_n = 20
 schedule = "0 5,17 * * *"
 
 [topics.ai_blogs]
@@ -128,7 +128,7 @@ rss_feeds = [
   "https://www.johndcook.com/blog/feed/",
 ]
 prompt_template = "ai_blogs.md"
-top_n = 25
+top_n = 30
 schedule = "5 5,17 * * *"
 
 [topics.github_trending]
@@ -148,5 +148,5 @@ github_keywords = [
   "API",           # developer services and SDKs
 ]
 prompt_template = "github_trending.md"
-top_n = 15
+top_n = 20
 schedule = "20 5,17 * * *"
